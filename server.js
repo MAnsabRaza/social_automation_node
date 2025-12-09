@@ -139,6 +139,40 @@ app.post("/login-social", async (req, res) => {
 
                 await page.waitForTimeout(5000);
                 break;
+                 case "facebook":
+                await page.fill("#email", username);
+                await page.fill("#pass", password);
+                await page.click('button[name="login"]');
+                break;
+
+            case "twitter":
+                await page.fill('input[name="text"]', username);
+                await page.keyboard.press("Enter");
+                await page.waitForTimeout(3000);
+                await page.fill('input[name="password"]', password);
+                await page.keyboard.press("Enter");
+                break;
+
+            case "tiktok":
+                await page.fill('input[name="username"]', username);
+                await page.fill('input[name="password"]', password);
+                await page.click('button');
+                break;
+
+            case "linkedin":
+                await page.fill("#username", username);
+                await page.fill("#password", password);
+                await page.click('button[type="submit"]');
+                break;
+
+            case "youtube":
+                await page.fill("input[type=email]", username);
+                await page.keyboard.press("Enter");
+                await page.waitForTimeout(3000);
+                await page.fill("input[type=password]", password);
+                await page.keyboard.press("Enter");
+                break;
+                
 
             // Add other platforms with similar "Not Now" handling...
         }
