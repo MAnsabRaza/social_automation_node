@@ -72,10 +72,10 @@ app.post("/login-social", async (req, res) => {
         return res.json({ success: false, message: "Platform not supported" });
     }
 
-    console.log("Login attempt:", platform, "Account ID:", account_id);
+    console.log(`🌐 Login attempt → ${platform} | Account ID: ${account_id}`);
 
     try {
-        // Reuse existing browser if already logged in
+        // Reuse session if browser is already running
         if (activeBrowsers[account_id]) {
             const context = activeContexts[account_id];
             const storageState = await context.storageState();
@@ -91,116 +91,130 @@ app.post("/login-social", async (req, res) => {
 
         // Launch new browser
         const browser = await chromium.launch({
-            headless: false, // Keep false for debugging Instagram/FB
+            headless: false,
             proxy: proxy_host ? {
                 server: `http://${proxy_host}:${proxy_port}`,
                 username: proxy_username || undefined,
                 password: proxy_password || undefined,
-            } : undefined,
+            } : undefined
         });
 
         const context = await browser.newContext({
-            userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36"
+            userAgent:
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36",
+            locale: "en-US",
+            timezoneId: "America/New_York",
+            permissions: ["geolocation", "notifications"],
         });
 
-        const page = await context.newPage();
         activeBrowsers[account_id] = browser;
         activeContexts[account_id] = context;
 
-        await page.goto(LOGIN_URL[platform], { waitUntil: "networkidle", timeout: 60000 });
+        const page = await context.newPage();
 
-        // === Handle CAPTCHA if exists ===
-        const captchaFrame = page.frameLocator('iframe[src*="recaptcha"]');
-        if (await captchaFrame.locator('#recaptcha').isVisible().catch(() => false)) {
-            console.log("Captcha detected, solving...");
-            const siteKey = await page.locator('[data-sitekey]').getAttribute('data-sitekey').catch(() => "6Ld2VCkUAAAAACPXeu5YgGDis45w..."); // fallback
-            const token = await solveCaptcha(LOGIN_URL[platform], siteKey || "6Ld2VCkUAAAAACPXeu5YgGDis45w...");
-            await page.evaluate((t) => {
-                document.querySelector('textarea#g-recaptcha-response').value = t;
-                if (window.grecaptcha) grecaptcha.getResponse = () => t;
-            }, token);
-            await page.waitForTimeout(2000);
-        }
+        console.log("⏳ Loading login page...");
 
-        // === PLATFORM-SPECIFIC LOGIN ===
+        // FIX: Instagram never reaches "networkidle" → replaced
+        await page.goto(LOGIN_URL[platform], {
+            waitUntil: "domcontentloaded",
+            timeout: 60000
+        });
+
+        await page.waitForTimeout(2500); // Let IG/FB scripts load
+
+        // --------------------------
+        //     PLATFORM LOGINS
+        // --------------------------
+
         switch (platform) {
+
             case "instagram":
+                await page.waitForSelector('input[name="username"]', { timeout: 30000 });
+
                 await page.fill('input[name="username"]', username);
                 await page.fill('input[name="password"]', password);
+
                 await page.click('button[type="submit"]');
 
-                // Wait for navigation after login
-                await page.waitForURL("https://www.instagram.com/**", { timeout: 30000 }).catch(() => {});
-                
-                // Handle "Save Your Login Info?" → Click "Not Now"
+                // Wait for login redirect
+                await page.waitForTimeout(5000);
+
+                // Dismiss popups
                 await page.click('text=Not now').catch(() => {});
-                // Handle notifications → "Not Now"
                 await page.click('button:has-text("Not Now")').catch(() => {});
 
-                await page.waitForTimeout(5000);
                 break;
-                 case "facebook":
+
+            case "facebook":
+                await page.waitForSelector("#email", { timeout: 20000 });
                 await page.fill("#email", username);
                 await page.fill("#pass", password);
                 await page.click('button[name="login"]');
                 break;
 
             case "twitter":
+                await page.waitForSelector('input[name="text"]', { timeout: 20000 });
                 await page.fill('input[name="text"]', username);
                 await page.keyboard.press("Enter");
+
                 await page.waitForTimeout(3000);
                 await page.fill('input[name="password"]', password);
                 await page.keyboard.press("Enter");
                 break;
 
             case "tiktok":
+                await page.waitForTimeout(3000);
                 await page.fill('input[name="username"]', username);
                 await page.fill('input[name="password"]', password);
                 await page.click('button');
                 break;
 
             case "linkedin":
+                await page.waitForSelector("#username", { timeout: 20000 });
                 await page.fill("#username", username);
                 await page.fill("#password", password);
                 await page.click('button[type="submit"]');
                 break;
 
             case "youtube":
+                await page.waitForSelector('input[type="email"]', { timeout: 20000 });
                 await page.fill("input[type=email]", username);
                 await page.keyboard.press("Enter");
+
                 await page.waitForTimeout(3000);
                 await page.fill("input[type=password]", password);
                 await page.keyboard.press("Enter");
                 break;
-                
-
-            // Add other platforms with similar "Not Now" handling...
         }
 
-        // === SAVE SESSION AFTER SUCCESSFUL LOGIN ===
-        const storageState = await context.storageState();
+        // Allow cookie/session setup
+        await page.waitForTimeout(5000);
 
-        // Extract auth token
+        // Save session
+        const storageState = await context.storageState();
         const authToken = extractAuthToken(storageState.cookies, platform);
 
-        console.log("Login successful for account:", account_id);
+        console.log(`✅ Login successful → ${account_id}`);
 
-        res.json({
+        return res.json({
             success: true,
             message: "Login successful",
             sessionData: JSON.stringify(storageState),
             cookies: storageState.cookies,
-            authToken: authToken || null
+            authToken: authToken
         });
 
     } catch (error) {
-        console.error("Login failed:", error.message);
-        res.json({ 
-            success: false, 
-            error: error.message 
+        console.error("❌ Login failed:", error.message);
+
+        return res.json({
+            success: false,
+            message: "Login error",
+            error: error.message
         });
     }
 });
+
 
 
 // --------------- CHECK LOGIN STATUS -------------------
@@ -251,80 +265,6 @@ app.post("/check-login", async (req, res) => {
     }
 });
 
-// --------------- POST WITH SESSION REUSE -------------------
-app.post("/post-social", async (req, res) => {
-    const {
-        platform, content, image, hashtags,
-        sessionData, account_id,
-        proxy_host, proxy_port, proxy_username, proxy_password
-    } = req.body;
-
-    let browser, context, page;
-
-    try {
-        browser = await chromium.launch({
-            headless: false,
-            proxy: proxy_host ? { server: `http://${proxy_host}:${proxy_port}`, username: proxy_username, password: proxy_password } : undefined
-        });
-
-        // Reuse saved session if provided
-        if (sessionData) {
-            context = await browser.newContext({
-                storageState: JSON.parse(sessionData)
-            });
-            console.log("Reusing saved session");
-        } else {
-            return res.json({ success: false, message: "No sessionData provided" });
-        }
-
-        page = await context.newPage();
-        await page.goto("https://www.instagram.com/", { timeout: 60000 });
-
-        // Check if still logged in
-        const isLoginPage = await page.locator('input[name="username"]').isVisible().catch(() => false);
-        if (isLoginPage) {
-            return res.json({ success: false, message: "Session expired - login required" });
-        }
-
-        // Go to create post
-        await page.goto("https://www.instagram.com/create/select/");
-        await page.waitForTimeout(5000);
-
-        // Upload image
-        if (image) {
-            const filePath = path.join(__dirname, "temp_upload.png");
-            fs.writeFileSync(filePath, Buffer.from(image.split(';base64,').pop(), 'base64'));
-            await page.setInputFiles('input[type="file"]', filePath);
-            await page.waitForTimeout(7000);
-        }
-
-        await page.click('div[role="button"]:has-text("Next")', { timeout: 10000 });
-        await page.waitForTimeout(2000);
-        await page.click('div[role="button"]:has-text("Next")', { timeout: 10000 });
-        await page.waitForTimeout(2000);
-
-        await page.fill('textarea', `${content}\n\n${hashtags}`);
-        await page.waitForTimeout(2000);
-
-        await page.click('div[role="button"]:has-text("Share")');
-        await page.waitForTimeout(8000);
-
-        // Return updated session (in case cookies changed)
-        const updatedState = await context.storageState();
-
-        res.json({
-            success: true,
-            message: "Posted successfully!",
-            sessionData: JSON.stringify(updatedState)
-        });
-
-    } catch (err) {
-        console.error("Post failed:", err);
-        res.json({ success: false, message: err.message });
-    } finally {
-        if (browser) await browser.close().catch(() => {});
-    }
-});
 
 // Helper function to extract auth token
 function extractAuthToken(cookies, platform) {
