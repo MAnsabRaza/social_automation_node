@@ -286,7 +286,7 @@ app.post("/check-login", async (req, res) => {
 });
 
 app.post("/execute-task", async (req, res) => {
-  const { task, account, post_content } = req.body;
+  const { task, account } = req.body;
 
   console.log("📋 Executing Task:", task);
 
@@ -303,42 +303,36 @@ app.post("/execute-task", async (req, res) => {
   try {
     let browser, context, page;
 
-    // Check if browser session exists
     if (activeBrowsers[account.id]) {
       console.log("♻️ Reusing existing browser session");
-      context = activeContexts[account.id];
       browser = activeBrowsers[account.id];
+      context = activeContexts[account.id];
       page = await context.newPage();
     } else {
       console.log("🚀 Launching new browser session");
 
-      // Parse session data if exists
       let storageState = null;
       if (account.session_data) {
         try {
           storageState = JSON.parse(account.session_data);
-        } catch (e) {
-          console.log("⚠️ Invalid session data, logging in fresh");
-        }
+        } catch {}
       }
 
       browser = await chromium.launch({
         headless: false,
         proxy: account.proxy_id
           ? {
-              server: `http://${account.proxy?.host}:${account.proxy?.port}`,
-              username: account.proxy?.username || undefined,
-              password: account.proxy?.password || undefined,
+              server: `http://${account.proxy.host}:${account.proxy.port}`,
+              username: account.proxy.username || undefined,
+              password: account.proxy.password || undefined,
             }
           : undefined,
       });
 
       context = await browser.newContext({
-        storageState: storageState,
-        userAgent:
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36",
+        storageState,
+        userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/129.0.0.0",
         locale: "en-US",
-        timezoneId: "America/New_York",
       });
 
       activeBrowsers[account.id] = browser;
@@ -347,44 +341,28 @@ app.post("/execute-task", async (req, res) => {
       page = await context.newPage();
     }
 
-    // Execute task based on type
+    // ✅ POST TASK
     if (taskType === "post") {
-      const result = await createPost(page, platform, post_content, task);
-
-      // Don't close browser - keep session alive
-      // await browser.close();
-
-      return res.json({
-        success: result.success,
-        message: result.message,
-        post_url: result.post_url || null,
-      });
-    } else if (taskType === "like") {
-      const result = await likePost(page, platform, task.target_url);
-      return res.json(result);
-    } else if (taskType === "comment") {
-      const result = await commentOnPost(
-        page,
-        platform,
-        task.target_url,
-        post_content?.content
-      );
-      return res.json(result);
-    } else if (taskType === "follow") {
-      const result = await followUser(page, platform, task.target_url);
-      return res.json(result);
-    } else {
-      return res.json({
-        success: false,
-        message: `Task type "${taskType}" not implemented yet`,
-      });
+      return res.json(await createPost(page, platform, task));
     }
+
+    if (taskType === "follow") {
+      return res.json(await followUser(page, platform, task.target_url));
+    }
+
+    if (taskType === "unfollow") {
+      return res.json(await unfollowUser(page, platform, task.target_url));
+    }
+
+    return res.json({
+      success: false,
+      message: `Task type ${taskType} not supported`,
+    });
   } catch (error) {
     console.error("❌ Task execution failed:", error.message);
     return res.json({
       success: false,
-      message: "Task execution error",
-      error: error.message,
+      message: error.message,
     });
   }
 });
@@ -392,28 +370,48 @@ app.post("/execute-task", async (req, res) => {
 // ==========================================
 // CREATE POST FUNCTION
 // ==========================================
-async function createPost(page, platform, postContent, task) {
+// async function createPost(page, platform, task) {
+//   console.log(`📝 Creating post on ${platform}...`);
+
+//   try {
+//     switch (platform) {
+//       case "instagram":
+//         return await createInstagramPost(page, postContent);
+//       case "facebook":
+//         return await createFacebookPost(page, postContent);
+//       case "twitter":
+//         return await createTwitterPost(page, postContent);
+//       case "linkedin":
+//         return await createLinkedInPost(page, postContent);
+//       default:
+//         return {
+//           success: false,
+//           message: `Platform ${platform} not supported for posting yet`,
+//         };
+//     }
+//   } catch (error) {
+//     console.error(`❌ Failed to create post on ${platform}:`, error.message);
+//     return { success: false, message: error.message };
+//   }
+// }
+async function createPost(page, platform, task) {
   console.log(`📝 Creating post on ${platform}...`);
 
   try {
-    switch (platform) {
-      case "instagram":
-        return await createInstagramPost(page, postContent);
-      case "facebook":
-        return await createFacebookPost(page, postContent);
-      case "twitter":
-        return await createTwitterPost(page, postContent);
-      case "linkedin":
-        return await createLinkedInPost(page, postContent);
-      default:
-        return {
-          success: false,
-          message: `Platform ${platform} not supported for posting yet`,
-        };
+    if (platform === "instagram") {
+      return await createInstagramPost(page, task); // ✅ PASS task
     }
+
+    return {
+      success: false,
+      message: `Platform ${platform} not supported`,
+    };
   } catch (error) {
     console.error(`❌ Failed to create post on ${platform}:`, error.message);
-    return { success: false, message: error.message };
+    return {
+      success: false,
+      message: error.message,
+    };
   }
 }
 
@@ -431,66 +429,29 @@ async function createInstagramPost(page, postContent) {
 
     await page.waitForTimeout(4000);
 
-    // Dismiss all popups
+    // Dismiss popups
     await page.click("text=Not now").catch(() => {});
     await page.click('button:has-text("Not Now")').catch(() => {});
-    await page
-      .click('button:has-text("Turn on Notifications") >> nth=0')
-      .catch(() => {});
-    await page.waitForTimeout(3000);
+    await page.waitForTimeout(2000);
 
-    // METHOD 1: Click bottom "+" button (most reliable in 2025)
+    // ✅ FIX 1: Better selector for Create button
     const createButton = await page
-      .waitForSelector('[data-testid="new-post-button"]', { timeout: 10000 })
-      .catch(async () => {
-        // Fallback: try SVG icon in bottom nav
-        return await page.waitForSelector('svg[aria-label="New post"]', {
-          timeout: 10000,
-        });
-      });
-
-    if (!createButton) {
-      throw new Error("Instagram Create (+) button not found");
-    }
-
-    await createButton.click({ force: true });
-    console.log("✅ Create button clicked");
-
-    // Wait for the Create modal/panel to open
-    await page.waitForTimeout(3000);
-
-    // Look for "Select from computer" button or drag area
-    const selectFromComputer = await page
       .locator(
-        'button:has-text("Select from computer"), div[role="button"]:has-text("Select from computer"), span:has-text("Select from computer")'
+        'svg[aria-label="New post"], svg[aria-label="Create"], a[href="#"]:has(svg[aria-label="New post"])'
       )
       .first();
 
-    if (await selectFromComputer.isVisible({ timeout: 10000 })) {
-      await selectFromComputer.click({ force: true });
-      console.log("✅ Clicked 'Select from computer'");
-    } else {
-      // Alternative: click the big drop zone
-      const dropZone = page.locator(
-        'div[accept*="image"], div[accept*="video"], i[aria-label="Photo/video"]'
-      );
-      await dropZone.click({ force: true });
-      console.log("✅ Clicked drop zone");
-    }
+    await createButton.waitFor({ state: "visible", timeout: 15000 });
+    await createButton.click({ force: true });
+    console.log("✅ Create button clicked");
 
-    await page.waitForTimeout(2000);
+    await page.waitForTimeout(3000);
 
-    // === UPLOAD FILES USING FILE CHOOSER ===
-    const [fileChooser] = await Promise.all([
-      page.waitForEvent("filechooser"),
-      page
-        .click('input[type="file"][multiple]', { force: true })
-        .catch(() => {}), // hidden input
-    ]);
-
-    if (!fileChooser) {
-      throw new Error("File chooser did not open");
-    }
+    // ✅ FIX 2: Wait for file input to appear
+    const fileInput = await page
+      .locator('input[type="file"][accept*="image"]')
+      .first();
+    await fileInput.waitFor({ state: "attached", timeout: 10000 });
 
     // Prepare temp files
     const tempFiles = [];
@@ -511,10 +472,10 @@ async function createInstagramPost(page, postContent) {
 
     for (let b64 of mediaUrls) {
       if (b64.startsWith("data:image") || b64.startsWith("data:video")) {
-        const ext = b64.includes("video") ? ".mp4" : ".jpg";
+        const ext = b64.includes("video") ? "mp4" : "jpg";
         const filePath = path.join(
           __dirname,
-          `temp_${Date.now()}_${Math.random().toString(36)}.${ext}`
+          `temp_${Date.now()}_${Math.random().toString(36).substring(7)}.${ext}`
         );
         const base64Data = b64.split(",")[1];
         fs.writeFileSync(filePath, Buffer.from(base64Data, "base64"));
@@ -526,44 +487,51 @@ async function createInstagramPost(page, postContent) {
       throw new Error("No valid media files to upload");
     }
 
-    await fileChooser.setFiles(tempFiles);
+    // ✅ FIX 3: Direct file input upload
+    await fileInput.setInputFiles(tempFiles);
     console.log(`✅ Uploaded ${tempFiles.length} file(s)`);
 
-    // Wait for upload to finish
-    await page
-      .waitForSelector('img[alt="Preview"]', { timeout: 30000 })
-      .catch(() => {});
-    await page.waitForTimeout(4000);
-
-    // Click Next → Next → Share
-    await page
-      .click('div:has-text("Next") >> nth=0')
-      .catch(() => page.click('button:has-text("Next")'));
+    // Wait for preview
+    await page.waitForSelector('img[alt*="Preview"], canvas', {
+      timeout: 30000,
+    });
     await page.waitForTimeout(3000);
 
+    // Click Next buttons
     await page
-      .click('div:has-text("Next") >> nth=0')
-      .catch(() => page.click('button:has-text("Next")'));
-    await page.waitForTimeout(3000);
+      .locator('button:has-text("Next"), div[role="button"]:has-text("Next")')
+      .first()
+      .click();
+    await page.waitForTimeout(2000);
+
+    await page
+      .locator('button:has-text("Next"), div[role="button"]:has-text("Next")')
+      .first()
+      .click();
+    await page.waitForTimeout(2000);
 
     // Add caption
     const caption =
       (postContent?.content || "") + "\n\n" + (postContent?.hashtags || "");
     await page.fill(
-      'textarea[aria-label="Write a caption..."]',
+      'textarea[aria-label*="caption"], textarea[placeholder*="caption"]',
       caption.trim()
     );
-    await page.waitForTimeout(2000);
+    await page.waitForTimeout(1500);
 
     // Share
     await page
-      .click('div:has-text("Share") >> nth=0')
-      .catch(() => page.click('button:has-text("Share")'));
-
-    await page.waitForTimeout(8000);
+      .locator('button:has-text("Share"), div[role="button"]:has-text("Share")')
+      .first()
+      .click();
+    await page.waitForTimeout(10000);
 
     // Cleanup
-    tempFiles.forEach((f) => fs.unlinkSync(f));
+    tempFiles.forEach((f) => {
+      try {
+        fs.unlinkSync(f);
+      } catch (e) {}
+    });
 
     console.log("✅ Instagram post created successfully!");
     return {
@@ -579,6 +547,7 @@ async function createInstagramPost(page, postContent) {
     };
   }
 }
+
 // ==========================================
 // FACEBOOK POST
 // ==========================================
@@ -788,28 +757,102 @@ async function followUser(page, platform, targetUrl) {
   try {
     await page.goto(targetUrl, {
       waitUntil: "domcontentloaded",
-      timeout: 30000,
+      timeout: 60000,
     });
-    await page.waitForTimeout(3000);
 
-    switch (platform) {
-      case "instagram":
-        await page
-          .click('button:has-text("Follow")')
-          .first()
-          .catch(() => {});
-        break;
-      case "twitter":
-        await page.click('[data-testid$="-follow"]').catch(() => {});
-        break;
+    await page.waitForTimeout(4000);
+
+    if (platform === "instagram") {
+      // Multiple selectors for safety
+      const followBtn = page
+        .locator('button:has-text("Follow"), button:has-text("Follow Back")')
+        .first();
+
+      await followBtn.waitFor({ state: "visible", timeout: 15000 });
+      await followBtn.click();
     }
 
-    await page.waitForTimeout(2000);
+    if (platform === "twitter") {
+      await page.click('[data-testid$="-follow"]', { timeout: 15000 });
+    }
+
+    if (platform === "facebook") {
+      await page.click('div[aria-label="Follow"]', { timeout: 15000 });
+    }
+
+    await page.waitForTimeout(3000);
+
+    console.log("✅ Follow successful");
     return { success: true, message: "User followed successfully" };
   } catch (error) {
+    console.error("❌ Follow failed:", error.message);
     return { success: false, message: error.message };
   }
 }
+async function unfollowUser(page, platform, targetUrl) {
+  console.log(`🚫 Unfollowing user on ${platform}...`);
+
+  try {
+    await page.goto(targetUrl, {
+      waitUntil: "domcontentloaded",
+      timeout: 60000,
+    });
+
+    await page.waitForTimeout(4000);
+
+    if (platform !== "instagram") {
+      return {
+        success: false,
+        message: `Unfollow not supported for ${platform}`,
+      };
+    }
+
+    // STEP 1: Find "Following" button
+    const followingBtn = page.locator('button:has-text("Following")').first();
+
+    const isFollowing = await followingBtn.count();
+    if (!isFollowing) {
+      console.log("ℹ️ User is NOT followed — skipping unfollow");
+      return {
+        success: true,
+        message: "User was not followed, nothing to unfollow",
+      };
+    }
+
+    // ✅ CLICK FOLLOWING (THIS WAS MISSING)
+    await followingBtn.waitFor({ state: "visible", timeout: 15000 });
+    await followingBtn.click();
+    await page.waitForTimeout(2000);
+
+    // STEP 2: Wait for dialog
+    const dialog = page.locator('div[role="dialog"]').first();
+    await dialog.waitFor({ state: "visible", timeout: 15000 });
+
+    // STEP 3: Click Unfollow
+    const unfollowBtn = dialog.locator(
+      'div[role="button"]:has-text("Unfollow")'
+    ).first();
+
+    await unfollowBtn.waitFor({ state: "visible", timeout: 15000 });
+    await unfollowBtn.click();
+
+    await page.waitForTimeout(3000);
+
+    console.log("✅ Unfollowed successfully");
+    return {
+      success: true,
+      message: "User unfollowed successfully",
+    };
+
+  } catch (error) {
+    console.error("❌ Unfollow failed:", error.message);
+    return {
+      success: false,
+      message: error.message,
+    };
+  }
+}
+
 
 // Helper function to extract auth token
 function extractAuthToken(cookies, platform) {
