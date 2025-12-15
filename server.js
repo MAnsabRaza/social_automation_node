@@ -871,81 +871,181 @@ async function likePost(page, platform, targetUrl) {
 // COMMENT FUNCTION
 // ==========================================
 async function commentOnPost(page, platform, targetUrl, commentText) {
-  console.log(`💬 Commenting on ${platform}... new code`);
+  console.log(`💬 Commenting on ${platform}... new....`);
   try {
     if (!targetUrl) throw new Error("Target URL missing");
     if (!commentText) throw new Error("Comment text missing");
     if (platform !== "instagram") throw new Error("Platform not supported");
-
+    
     const cleanUrl = targetUrl.split("?")[0];
-    await page.goto(cleanUrl, { waitUntil: "networkidle", timeout: 120000 });
-    await page.waitForTimeout(8000); // Full load, especially for Reels
-
+    
+    // Navigate with error handling
+    try {
+      await page.goto(cleanUrl, { 
+        waitUntil: "domcontentloaded",
+        timeout: 60000 
+      });
+    } catch (navError) {
+      if (!page.url().includes('instagram.com')) {
+        throw new Error("Failed to navigate to Instagram post");
+      }
+      console.log("⚠️ Navigation timeout but page loaded, continuing...");
+    }
+    
+    await page.waitForTimeout(5000);
+    
     // Detect session expired
     if (await page.locator('input[name="username"]').isVisible({ timeout: 5000 }).catch(() => false)) {
       throw new Error("Instagram session expired (login required)");
     }
-
-    // Scroll to load the actions bar and comments section
-    await page.evaluate(() => window.scrollBy(0, 500));
-    await page.waitForTimeout(3000);
-
-    // Click the Comment icon to open/focus the comment section (essential for Reels & some posts)
-    const commentIconWrapper = page.locator('svg[aria-label="Comment"]').closest('span').first();
-    // Fallback: the direct button wrapper
-    // const commentIconWrapper = page.locator('section span > button > svg[aria-label="Comment"]').closest('span').first();
-
-    if (await commentIconWrapper.isVisible({ timeout: 10000 }).catch(() => false)) {
-      await commentIconWrapper.scrollIntoViewIfNeeded();
-      await commentIconWrapper.hover();
-      await page.waitForTimeout(500 + Math.random() * 500);
-      await commentIconWrapper.click({ force: true });
-      await page.waitForTimeout(2000);
+    
+    // Scroll to load the post content
+    await page.evaluate(() => {
+      window.scrollTo(0, 300);
+    });
+    await page.waitForTimeout(2000);
+    
+    // Try multiple selectors for the comment icon (Instagram has variations)
+    const commentIconSelectors = [
+      'svg[aria-label="Comment"]',
+      'svg[aria-label="Comment on this post"]',
+      'button[aria-label="Comment"]',
+      'span:has(svg[aria-label*="Comment"])',
+    ];
+    
+    let commentIconClicked = false;
+    
+    for (const selector of commentIconSelectors) {
+      try {
+        const icon = page.locator(selector).first();
+        if (await icon.isVisible({ timeout: 5000 })) {
+          await icon.scrollIntoViewIfNeeded();
+          await icon.click({ force: true, timeout: 5000 });
+          console.log(`✅ Clicked comment icon using selector: ${selector}`);
+          commentIconClicked = true;
+          await page.waitForTimeout(2000);
+          break;
+        }
+      } catch (e) {
+        console.log(`⚠️ Failed to click with selector: ${selector}`);
+        continue;
+      }
     }
-
-    // The actual comment input box (contenteditable div)
-    const commentBox = page.locator('div[role="textbox"][contenteditable="true"]').first();
-
-    await commentBox.waitFor({ state: "visible", timeout: 20000 });
+    
+    if (!commentIconClicked) {
+      console.log("⚠️ Comment icon not clicked, trying direct textbox access");
+    }
+    
+    // Scroll down more to ensure comment box is loaded
+    await page.evaluate(() => {
+      window.scrollBy(0, 400);
+    });
+    await page.waitForTimeout(2000);
+    
+    // Try multiple selectors for comment input box
+    const commentBoxSelectors = [
+      'textarea[placeholder*="Add a comment"]',
+      'textarea[aria-label*="Add a comment"]',
+      'div[role="textbox"][contenteditable="true"]',
+      'textarea[placeholder*="comment"]',
+      'form textarea',
+    ];
+    
+    let commentBox = null;
+    
+    for (const selector of commentBoxSelectors) {
+      try {
+        const box = page.locator(selector).first();
+        if (await box.isVisible({ timeout: 5000 })) {
+          commentBox = box;
+          console.log(`✅ Found comment box using selector: ${selector}`);
+          break;
+        }
+      } catch (e) {
+        console.log(`⚠️ Comment box not found with selector: ${selector}`);
+        continue;
+      }
+    }
+    
+    if (!commentBox) {
+      // Last resort: take screenshot for debugging
+      await page.screenshot({ path: 'comment-box-not-found.png', fullPage: true });
+      throw new Error("Comment input box not found - check comment-box-not-found.png");
+    }
+    
+    // Interact with comment box
     await commentBox.scrollIntoViewIfNeeded();
-
-    // Human-like typing
     await commentBox.click({ force: true });
+    await page.waitForTimeout(1000);
+    
+    // Clear any existing text
+    await commentBox.fill('');
     await page.waitForTimeout(500);
+    
+    // Type comment with human-like delay
     await commentBox.type(commentText, { delay: 100 + Math.random() * 100 });
-
-    // Find and click the Post button (blue when active)
-    const postButton = page.locator('div[role="button"]:has-text("Post")', { has: page.locator('span') }).or(
-      page.locator('button:has-text("Post")')
-    ).first();
-
-    await postButton.waitFor({ state: "visible", timeout: 10000 });
+    await page.waitForTimeout(1000);
+    
+    // Find and click the Post button with multiple selectors
+    const postButtonSelectors = [
+      'button:has-text("Post")',
+      'div[role="button"]:has-text("Post")',
+      'button[type="submit"]',
+      'button:has(div:text("Post"))',
+    ];
+    
+    let postButton = null;
+    
+    for (const selector of postButtonSelectors) {
+      try {
+        const btn = page.locator(selector).first();
+        if (await btn.isVisible({ timeout: 5000 })) {
+          postButton = btn;
+          console.log(`✅ Found post button using selector: ${selector}`);
+          break;
+        }
+      } catch (e) {
+        continue;
+      }
+    }
+    
+    if (!postButton) {
+      throw new Error("Post button not found");
+    }
+    
     await postButton.scrollIntoViewIfNeeded();
     await postButton.hover();
     await page.waitForTimeout(500);
     await postButton.click({ force: true });
-
-    // Wait for comment to appear (optional confirmation)
+    
+    // Wait for comment to be posted
     await page.waitForTimeout(5000);
-
-    // Optional: check if your comment appeared
-    const commentVisible = await page.locator(`span:has-text("${commentText}")`).isVisible({ timeout: 10000 }).catch(() => false);
-
-    console.log(commentVisible ? "✅ Comment posted & confirmed" : "✅ Comment posted (no visual confirmation)");
+    
+    // Verify comment posted
+    const commentVisible = await page.locator(`text=${commentText}`).first().isVisible({ timeout: 10000 }).catch(() => false);
+    console.log(commentVisible ? "✅ Comment posted & confirmed" : "✅ Comment posted (confirmation pending)");
+    
     return {
       success: true,
       message: commentVisible ? "Comment posted successfully" : "Comment posted (confirmation pending)",
       post_url: cleanUrl,
     };
-
   } catch (error) {
     console.error("❌ Comment failed:", error.message);
-    // Optional debug screenshot
-    await page.screenshot({ path: 'comment-error.png', fullPage: true }).catch(() => {});
-    return { success: false, message: error.message };
+    // Debug screenshot with timestamp
+    const timestamp = Date.now();
+    await page.screenshot({ 
+      path: `comment-error-${timestamp}.png`, 
+      fullPage: true 
+    }).catch(() => {});
+    
+    return { 
+      success: false, 
+      message: error.message,
+      debug_screenshot: `comment-error-${timestamp}.png`
+    };
   }
 }
-
 // ==========================================
 // FOLLOW USER FUNCTION
 // ==========================================
