@@ -354,6 +354,16 @@ app.post("/execute-task", async (req, res) => {
       return res.json(await unfollowUser(page, platform, task.target_url));
     }
 
+    if (taskType === "like") {
+      const result = await likePost(page, platform, task.target_url);
+      return res.json(result);
+    }
+    if (taskType === "comment") {
+      return res.json(
+        await commentOnPost(page, platform, task.target_url, task.comment)
+      );
+    }
+
     return res.json({
       success: false,
       message: `Task type ${taskType} not supported`,
@@ -687,63 +697,251 @@ async function createLinkedInPost(page, postContent) {
 // LIKE POST FUNCTION
 // ==========================================
 async function likePost(page, platform, targetUrl) {
-  console.log(`❤️ Liking post on ${platform}...`);
+  console.log(`❤️ Liking post on ${platform}... new code`);
 
   try {
-    await page.goto(targetUrl, {
-      waitUntil: "domcontentloaded",
-      timeout: 30000,
-    });
-    await page.waitForTimeout(3000);
+    if (!targetUrl) throw new Error("Target URL missing");
+    if (platform !== "instagram") throw new Error("Platform not supported");
 
-    switch (platform) {
-      case "instagram":
-        await page.click('svg[aria-label="Like"]').catch(() => {});
-        break;
-      case "facebook":
-        await page.click('[aria-label="Like"]').catch(() => {});
-        break;
-      case "twitter":
-        await page.click('[data-testid="like"]').catch(() => {});
-        break;
+    const cleanUrl = targetUrl.split("?")[0];
+
+    await page.goto(cleanUrl, { waitUntil: "networkidle", timeout: 120000 });
+    await page.waitForTimeout(8000);
+
+    // Detect session expired
+    if (await page.locator('input[name="username"]').isVisible({ timeout: 5000 }).catch(() => false)) {
+      throw new Error("Instagram session expired (login required)");
     }
 
-    await page.waitForTimeout(2000);
+    // Scroll to trigger lazy loading
+    await page.evaluate(() => window.scrollBy(0, 400));
+    await page.waitForTimeout(3000);
+
+    // Check if already liked (multiple possible red heart indicators)
+    const alreadyLiked = await page.evaluate(() => {
+      const svgs = document.querySelectorAll('svg');
+      for (const svg of svgs) {
+        const fill = svg.getAttribute('fill');
+        const stroke = svg.getAttribute('stroke');
+        const ariaLabel = svg.getAttribute('aria-label');
+        
+        if ((fill === '#ed4956' || fill === 'rgb(255, 48, 64)' || stroke === '#ed4956') ||
+            (ariaLabel && ariaLabel.toLowerCase().includes('unlike'))) {
+          return true;
+        }
+      }
+      return false;
+    });
+
+    if (alreadyLiked) {
+      console.log("💙 Already liked");
+      return { success: true, message: "Already liked" };
+    }
+
+    // Try multiple selector strategies
+    let likeButton = null;
+    
+    // Strategy 1: Find by aria-label
+    likeButton = page.locator('[aria-label="Like"]').first();
+    let isVisible = await likeButton.isVisible({ timeout: 3000 }).catch(() => false);
+    
+    // Strategy 2: Find SVG with specific viewBox (Instagram like icon)
+    if (!isVisible) {
+      console.log("Trying strategy 2: SVG viewBox...");
+      likeButton = page.locator('svg[aria-label="Like"]').locator('..').first();
+      isVisible = await likeButton.isVisible({ timeout: 3000 }).catch(() => false);
+    }
+    
+    // Strategy 3: Find button/div containing heart SVG path
+    if (!isVisible) {
+      console.log("Trying strategy 3: Heart path selector...");
+      const heartPaths = [
+        'path[d*="M16.792 3.904A4.989"]', // Common Instagram heart path
+        'path[d*="M34.6 3.1"]', // Alternative heart path
+        'path[d*="M16.792"]' // Partial match
+      ];
+      
+      for (const pathSelector of heartPaths) {
+        likeButton = page.locator(`button:has(${pathSelector}), div[role="button"]:has(${pathSelector}), span[role="button"]:has(${pathSelector})`).first();
+        isVisible = await likeButton.isVisible({ timeout: 2000 }).catch(() => false);
+        if (isVisible) break;
+      }
+    }
+    
+    // Strategy 4: Find by JavaScript evaluation (most reliable)
+    if (!isVisible) {
+      console.log("Trying strategy 4: JavaScript evaluation...");
+      const likeButtonFound = await page.evaluate(() => {
+        // Find all SVGs
+        const svgs = document.querySelectorAll('svg');
+        
+        for (const svg of svgs) {
+          const ariaLabel = svg.getAttribute('aria-label');
+          
+          // Look for "Like" label
+          if (ariaLabel && ariaLabel.toLowerCase() === 'like') {
+            // Find the clickable parent
+            let parent = svg.parentElement;
+            while (parent) {
+              const role = parent.getAttribute('role');
+              const tag = parent.tagName.toLowerCase();
+              
+              if (tag === 'button' || role === 'button' || 
+                  (tag === 'div' && role === 'button') ||
+                  (tag === 'span' && parent.onclick)) {
+                parent.setAttribute('data-like-button', 'true');
+                return true;
+              }
+              parent = parent.parentElement;
+            }
+          }
+        }
+        return false;
+      });
+      
+      if (likeButtonFound) {
+        likeButton = page.locator('[data-like-button="true"]').first();
+        isVisible = await likeButton.isVisible({ timeout: 2000 }).catch(() => false);
+      }
+    }
+
+    if (!isVisible) {
+      throw new Error("Like button not found with any strategy");
+    }
+
+    console.log("✅ Like button found, clicking...");
+
+    // Human-like interaction
+    await likeButton.scrollIntoViewIfNeeded();
+    await page.waitForTimeout(300 + Math.random() * 700);
+    await likeButton.hover({ timeout: 10000 });
+    await page.waitForTimeout(200 + Math.random() * 500);
+    
+    // Try click with different methods
+    try {
+      await likeButton.click({ timeout: 10000, delay: 100 });
+    } catch (e) {
+      console.log("Standard click failed, trying force click...");
+      await likeButton.click({ force: true, delay: 150 });
+    }
+
+    // Wait and verify
+    await page.waitForTimeout(5000);
+    
+    // Check for red heart or "Unlike" label
+    const confirmed = await page.evaluate(() => {
+      const svgs = document.querySelectorAll('svg');
+      for (const svg of svgs) {
+        const fill = svg.getAttribute('fill');
+        const stroke = svg.getAttribute('stroke');
+        const ariaLabel = svg.getAttribute('aria-label');
+        
+        if ((fill === '#ed4956' || fill === 'rgb(255, 48, 64)' || stroke === '#ed4956') ||
+            (ariaLabel && ariaLabel.toLowerCase().includes('unlike'))) {
+          return true;
+        }
+      }
+      return false;
+    });
+
+    if (!confirmed) {
+      console.warn("⚠️ No red heart visible – like may still have worked");
+      // Take debug screenshot
+      await page.screenshot({ path: 'like-attempt.png', fullPage: false });
+      return { success: true, message: "Like attempted (no visual confirmation)" };
+    }
+
+    console.log("❤️ Like successful & confirmed");
     return { success: true, message: "Post liked successfully" };
+
   } catch (error) {
+    console.error("❌ Like failed:", error.message);
+    // Debug screenshot
+    try {
+      await page.screenshot({ path: 'like-error.png', fullPage: false });
+    } catch {}
     return { success: false, message: error.message };
   }
 }
+
+
+
 
 // ==========================================
 // COMMENT FUNCTION
 // ==========================================
 async function commentOnPost(page, platform, targetUrl, commentText) {
-  console.log(`💬 Commenting on ${platform}...`);
-
+  console.log(`💬 Commenting on ${platform}... new code`);
   try {
-    await page.goto(targetUrl, {
-      waitUntil: "domcontentloaded",
-      timeout: 30000,
-    });
-    await page.waitForTimeout(3000);
+    if (!targetUrl) throw new Error("Target URL missing");
+    if (!commentText) throw new Error("Comment text missing");
+    if (platform !== "instagram") throw new Error("Platform not supported");
 
-    switch (platform) {
-      case "instagram":
-        await page.click('textarea[aria-label="Add a comment..."]');
-        await page.fill('textarea[aria-label="Add a comment..."]', commentText);
-        await page.click('button:has-text("Post")');
-        break;
-      case "facebook":
-        await page.click('[aria-label="Write a comment"]');
-        await page.fill('[aria-label="Write a comment"]', commentText);
-        await page.keyboard.press("Enter");
-        break;
+    const cleanUrl = targetUrl.split("?")[0];
+    await page.goto(cleanUrl, { waitUntil: "networkidle", timeout: 120000 });
+    await page.waitForTimeout(8000); // Full load, especially for Reels
+
+    // Detect session expired
+    if (await page.locator('input[name="username"]').isVisible({ timeout: 5000 }).catch(() => false)) {
+      throw new Error("Instagram session expired (login required)");
     }
 
-    await page.waitForTimeout(2000);
-    return { success: true, message: "Comment posted successfully" };
+    // Scroll to load the actions bar and comments section
+    await page.evaluate(() => window.scrollBy(0, 500));
+    await page.waitForTimeout(3000);
+
+    // Click the Comment icon to open/focus the comment section (essential for Reels & some posts)
+    const commentIconWrapper = page.locator('svg[aria-label="Comment"]').closest('span').first();
+    // Fallback: the direct button wrapper
+    // const commentIconWrapper = page.locator('section span > button > svg[aria-label="Comment"]').closest('span').first();
+
+    if (await commentIconWrapper.isVisible({ timeout: 10000 }).catch(() => false)) {
+      await commentIconWrapper.scrollIntoViewIfNeeded();
+      await commentIconWrapper.hover();
+      await page.waitForTimeout(500 + Math.random() * 500);
+      await commentIconWrapper.click({ force: true });
+      await page.waitForTimeout(2000);
+    }
+
+    // The actual comment input box (contenteditable div)
+    const commentBox = page.locator('div[role="textbox"][contenteditable="true"]').first();
+
+    await commentBox.waitFor({ state: "visible", timeout: 20000 });
+    await commentBox.scrollIntoViewIfNeeded();
+
+    // Human-like typing
+    await commentBox.click({ force: true });
+    await page.waitForTimeout(500);
+    await commentBox.type(commentText, { delay: 100 + Math.random() * 100 });
+
+    // Find and click the Post button (blue when active)
+    const postButton = page.locator('div[role="button"]:has-text("Post")', { has: page.locator('span') }).or(
+      page.locator('button:has-text("Post")')
+    ).first();
+
+    await postButton.waitFor({ state: "visible", timeout: 10000 });
+    await postButton.scrollIntoViewIfNeeded();
+    await postButton.hover();
+    await page.waitForTimeout(500);
+    await postButton.click({ force: true });
+
+    // Wait for comment to appear (optional confirmation)
+    await page.waitForTimeout(5000);
+
+    // Optional: check if your comment appeared
+    const commentVisible = await page.locator(`span:has-text("${commentText}")`).isVisible({ timeout: 10000 }).catch(() => false);
+
+    console.log(commentVisible ? "✅ Comment posted & confirmed" : "✅ Comment posted (no visual confirmation)");
+    return {
+      success: true,
+      message: commentVisible ? "Comment posted successfully" : "Comment posted (confirmation pending)",
+      post_url: cleanUrl,
+    };
+
   } catch (error) {
+    console.error("❌ Comment failed:", error.message);
+    // Optional debug screenshot
+    await page.screenshot({ path: 'comment-error.png', fullPage: true }).catch(() => {});
     return { success: false, message: error.message };
   }
 }
@@ -829,9 +1027,9 @@ async function unfollowUser(page, platform, targetUrl) {
     await dialog.waitFor({ state: "visible", timeout: 15000 });
 
     // STEP 3: Click Unfollow
-    const unfollowBtn = dialog.locator(
-      'div[role="button"]:has-text("Unfollow")'
-    ).first();
+    const unfollowBtn = dialog
+      .locator('div[role="button"]:has-text("Unfollow")')
+      .first();
 
     await unfollowBtn.waitFor({ state: "visible", timeout: 15000 });
     await unfollowBtn.click();
@@ -843,7 +1041,6 @@ async function unfollowUser(page, platform, targetUrl) {
       success: true,
       message: "User unfollowed successfully",
     };
-
   } catch (error) {
     console.error("❌ Unfollow failed:", error.message);
     return {
@@ -852,7 +1049,6 @@ async function unfollowUser(page, platform, targetUrl) {
     };
   }
 }
-
 
 // Helper function to extract auth token
 function extractAuthToken(cookies, platform) {
