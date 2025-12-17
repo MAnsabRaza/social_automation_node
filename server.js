@@ -376,34 +376,6 @@ app.post("/execute-task", async (req, res) => {
     });
   }
 });
-
-// ==========================================
-// CREATE POST FUNCTION
-// ==========================================
-// async function createPost(page, platform, task) {
-//   console.log(`📝 Creating post on ${platform}...`);
-
-//   try {
-//     switch (platform) {
-//       case "instagram":
-//         return await createInstagramPost(page, postContent);
-//       case "facebook":
-//         return await createFacebookPost(page, postContent);
-//       case "twitter":
-//         return await createTwitterPost(page, postContent);
-//       case "linkedin":
-//         return await createLinkedInPost(page, postContent);
-//       default:
-//         return {
-//           success: false,
-//           message: `Platform ${platform} not supported for posting yet`,
-//         };
-//     }
-//   } catch (error) {
-//     console.error(`❌ Failed to create post on ${platform}:`, error.message);
-//     return { success: false, message: error.message };
-//   }
-// }
 async function createPost(page, platform, task) {
   console.log(`📝 Creating post on ${platform}...`);
 
@@ -429,7 +401,7 @@ async function createPost(page, platform, task) {
 // INSTAGRAM POST
 // ==========================================
 async function createInstagramPost(page, postContent) {
-  console.log("📸 Creating Instagram post (2025 updated method)...");
+  console.log("📸 Creating Instagram post (FILE PATH method)...");
 
   try {
     await page.goto("https://www.instagram.com/", {
@@ -439,17 +411,15 @@ async function createInstagramPost(page, postContent) {
 
     await page.waitForTimeout(4000);
 
-    // Dismiss popups
+    // Close popups
     await page.click("text=Not now").catch(() => {});
     await page.click('button:has-text("Not Now")').catch(() => {});
     await page.waitForTimeout(2000);
 
-    // ✅ FIX 1: Better selector for Create button
-    const createButton = await page
-      .locator(
-        'svg[aria-label="New post"], svg[aria-label="Create"], a[href="#"]:has(svg[aria-label="New post"])'
-      )
-      .first();
+    // Click Create button
+    const createButton = page.locator(
+      'svg[aria-label="New post"], svg[aria-label="Create"]'
+    ).first();
 
     await createButton.waitFor({ state: "visible", timeout: 15000 });
     await createButton.click({ force: true });
@@ -457,107 +427,74 @@ async function createInstagramPost(page, postContent) {
 
     await page.waitForTimeout(3000);
 
-    // ✅ FIX 2: Wait for file input to appear
-    const fileInput = await page
-      .locator('input[type="file"][accept*="image"]')
-      .first();
-    await fileInput.waitFor({ state: "attached", timeout: 10000 });
+    // File input
+    const fileInput = page.locator('input[type="file"]').first();
+    await fileInput.waitFor({ state: "attached", timeout: 15000 });
 
-    // Prepare temp files
-    const tempFiles = [];
-    let mediaUrls = [];
-
-    if (postContent?.media_urls) {
-      const raw = postContent.media_urls.trim();
-      if (raw.startsWith("[")) {
-        try {
-          mediaUrls = JSON.parse(raw);
-        } catch {
-          mediaUrls = [raw];
-        }
-      } else if (raw) {
-        mediaUrls = [raw];
-      }
+    // -----------------------------
+    // ✅ HANDLE FILE PATH FROM LARAVEL
+    // -----------------------------
+    if (!postContent.media_urls) {
+      throw new Error("media_urls missing from task");
     }
 
-    for (let b64 of mediaUrls) {
-      if (b64.startsWith("data:image") || b64.startsWith("data:video")) {
-        const ext = b64.includes("video") ? "mp4" : "jpg";
-        const filePath = path.join(
-          __dirname,
-          `temp_${Date.now()}_${Math.random().toString(36).substring(7)}.${ext}`
-        );
-        const base64Data = b64.split(",")[1];
-        fs.writeFileSync(filePath, Buffer.from(base64Data, "base64"));
-        tempFiles.push(filePath);
-      }
+    // Laravel sends: images/tasks/xyz.jpg
+    const absoluteImagePath = path.resolve(
+      __dirname,
+      "../laravel-project/public",
+      postContent.media_urls
+    );
+
+    if (!fs.existsSync(absoluteImagePath)) {
+      throw new Error(`Image file not found: ${absoluteImagePath}`);
     }
 
-    if (tempFiles.length === 0) {
-      throw new Error("No valid media files to upload");
-    }
+    // Upload image
+    await fileInput.setInputFiles(absoluteImagePath);
+    console.log("✅ Image uploaded:", absoluteImagePath);
 
-    // ✅ FIX 3: Direct file input upload
-    await fileInput.setInputFiles(tempFiles);
-    console.log(`✅ Uploaded ${tempFiles.length} file(s)`);
+    // Wait preview
+    await page.waitForTimeout(5000);
 
-    // Wait for preview
-    await page.waitForSelector('img[alt*="Preview"], canvas', {
-      timeout: 30000,
-    });
-    await page.waitForTimeout(3000);
-
-    // Click Next buttons
-    await page
-      .locator('button:has-text("Next"), div[role="button"]:has-text("Next")')
-      .first()
-      .click();
+    // Next
+    await page.locator('button:has-text("Next")').first().click();
     await page.waitForTimeout(2000);
 
-    await page
-      .locator('button:has-text("Next"), div[role="button"]:has-text("Next")')
-      .first()
-      .click();
+    await page.locator('button:has-text("Next")').first().click();
     await page.waitForTimeout(2000);
 
-    // Add caption
+    // Caption
     const caption =
-      (postContent?.content || "") + "\n\n" + (postContent?.hashtags || "");
+      (postContent.content || "") +
+      "\n\n" +
+      (postContent.hashtags || "");
+
     await page.fill(
       'textarea[aria-label*="caption"], textarea[placeholder*="caption"]',
       caption.trim()
     );
+
     await page.waitForTimeout(1500);
 
     // Share
-    await page
-      .locator('button:has-text("Share"), div[role="button"]:has-text("Share")')
-      .first()
-      .click();
+    await page.locator('button:has-text("Share")').first().click();
     await page.waitForTimeout(10000);
 
-    // Cleanup
-    tempFiles.forEach((f) => {
-      try {
-        fs.unlinkSync(f);
-      } catch (e) {}
-    });
+    console.log("✅ Instagram post created successfully");
 
-    console.log("✅ Instagram post created successfully!");
     return {
       success: true,
       message: "Instagram post created successfully",
-      post_url: "https://www.instagram.com/",
     };
+
   } catch (error) {
     console.error("❌ Instagram post failed:", error.message);
     return {
       success: false,
-      message: error.message || "Instagram post failed",
+      message: error.message,
     };
   }
 }
-
 // ==========================================
 // FACEBOOK POST
 // ==========================================
@@ -1069,14 +1006,29 @@ async function followUser(page, platform, targetUrl) {
       await followBtn.waitFor({ state: "visible", timeout: 15000 });
       await followBtn.click();
     }
+     if (platform === "facebook") {
+      // Facebook profile pages load slow
+      await page.waitForTimeout(6000);
+
+      // Try multiple selectors (FB UI keeps changing)
+      const addFriendBtn = page.locator(
+        'div[aria-label="Add Friend"], ' +
+        'div[aria-label="Add friend"], ' +
+        'span:has-text("Add Friend"), ' +
+        'span:has-text("Add friend")'
+      ).first();
+
+      await addFriendBtn.waitFor({ state: "visible", timeout: 20000 });
+      await addFriendBtn.click();
+
+      console.log("✅ Facebook friend request sent");
+    }
 
     if (platform === "twitter") {
       await page.click('[data-testid$="-follow"]', { timeout: 15000 });
+      console.log("✅ Twitter follow done");
     }
 
-    if (platform === "facebook") {
-      await page.click('div[aria-label="Follow"]', { timeout: 15000 });
-    }
 
     await page.waitForTimeout(3000);
 
@@ -1087,6 +1039,7 @@ async function followUser(page, platform, targetUrl) {
     return { success: false, message: error.message };
   }
 }
+
 async function unfollowUser(page, platform, targetUrl) {
   console.log(`🚫 Unfollowing user on ${platform}...`);
 
@@ -1096,51 +1049,110 @@ async function unfollowUser(page, platform, targetUrl) {
       timeout: 60000,
     });
 
-    await page.waitForTimeout(4000);
+    await page.waitForTimeout(5000);
 
-    if (platform !== "instagram") {
-      return {
-        success: false,
-        message: `Unfollow not supported for ${platform}`,
-      };
-    }
+    /* ================= INSTAGRAM (UNCHANGED) ================= */
+    if (platform === "instagram") {
+      const followingBtn = page.locator('button:has-text("Following")').first();
 
-    // STEP 1: Find "Following" button
-    const followingBtn = page.locator('button:has-text("Following")').first();
+      const isFollowing = await followingBtn.count();
+      if (!isFollowing) {
+        console.log("ℹ️ User is NOT followed — skipping unfollow");
+        return {
+          success: true,
+          message: "User was not followed, nothing to unfollow",
+        };
+      }
 
-    const isFollowing = await followingBtn.count();
-    if (!isFollowing) {
-      console.log("ℹ️ User is NOT followed — skipping unfollow");
+      await followingBtn.waitFor({ state: "visible", timeout: 15000 });
+      await followingBtn.click();
+      await page.waitForTimeout(2000);
+
+      const dialog = page.locator('div[role="dialog"]').first();
+      await dialog.waitFor({ state: "visible", timeout: 15000 });
+
+      const unfollowBtn = dialog
+        .locator('div[role="button"]:has-text("Unfollow")')
+        .first();
+
+      await unfollowBtn.waitFor({ state: "visible", timeout: 15000 });
+      await unfollowBtn.click();
+
+      await page.waitForTimeout(3000);
+
+      console.log("✅ Instagram unfollowed successfully");
       return {
         success: true,
-        message: "User was not followed, nothing to unfollow",
+        message: "User unfollowed successfully",
       };
     }
 
-    // ✅ CLICK FOLLOWING (THIS WAS MISSING)
-    await followingBtn.waitFor({ state: "visible", timeout: 15000 });
-    await followingBtn.click();
-    await page.waitForTimeout(2000);
+    /* ================= FACEBOOK (UNFRIEND) ================= */
+    if (platform === "facebook") {
+      // Wait extra – FB is slow
+      await page.waitForTimeout(6000);
 
-    // STEP 2: Wait for dialog
-    const dialog = page.locator('div[role="dialog"]').first();
-    await dialog.waitFor({ state: "visible", timeout: 15000 });
+      // STEP 1: Click "Friends" button
+      const friendsBtn = page.locator(
+        'div[aria-label="Friends"], ' +
+        'span:has-text("Friends")'
+      ).first();
 
-    // STEP 3: Click Unfollow
-    const unfollowBtn = dialog
-      .locator('div[role="button"]:has-text("Unfollow")')
-      .first();
+      const isFriend = await friendsBtn.count();
+      if (!isFriend) {
+        console.log("ℹ️ User is not a friend");
+        return {
+          success: true,
+          message: "User is not a friend, nothing to unfriend",
+        };
+      }
 
-    await unfollowBtn.waitFor({ state: "visible", timeout: 15000 });
-    await unfollowBtn.click();
+      await friendsBtn.waitFor({ state: "visible", timeout: 20000 });
+      await friendsBtn.click();
+      await page.waitForTimeout(2000);
 
-    await page.waitForTimeout(3000);
+      // STEP 2: Menu / dialog opens
+      const dialog = page.locator('div[role="dialog"], div[role="menu"]').first();
+      await dialog.waitFor({ state: "visible", timeout: 15000 });
 
-    console.log("✅ Unfollowed successfully");
+      // STEP 3: Click "Unfriend"
+      const unfriendBtn = dialog.locator(
+        'div[aria-label="Unfriend"], ' +
+        'span:has-text("Unfriend")'
+      ).first();
+
+      await unfriendBtn.waitFor({ state: "visible", timeout: 15000 });
+      await unfriendBtn.click();
+
+      await page.waitForTimeout(2000);
+
+      // STEP 4: Confirm Unfriend
+      const confirmDialog = page.locator('div[role="dialog"]').first();
+      await confirmDialog.waitFor({ state: "visible", timeout: 15000 });
+
+      const confirmBtn = confirmDialog.locator(
+        'div[aria-label="Confirm"], ' +
+        'span:has-text("Confirm")'
+      ).first();
+
+      await confirmBtn.waitFor({ state: "visible", timeout: 15000 });
+      await confirmBtn.click();
+
+      await page.waitForTimeout(3000);
+
+      console.log("✅ Facebook unfriended successfully");
+      return {
+        success: true,
+        message: "User unfriended successfully",
+      };
+    }
+
+    /* ================= OTHER PLATFORMS ================= */
     return {
-      success: true,
-      message: "User unfollowed successfully",
+      success: false,
+      message: `Unfollow not supported for ${platform}`,
     };
+
   } catch (error) {
     console.error("❌ Unfollow failed:", error.message);
     return {
@@ -1149,6 +1161,69 @@ async function unfollowUser(page, platform, targetUrl) {
     };
   }
 }
+
+// async function unfollowUser(page, platform, targetUrl) {
+//   console.log(`🚫 Unfollowing user on ${platform}...`);
+
+//   try {
+//     await page.goto(targetUrl, {
+//       waitUntil: "domcontentloaded",
+//       timeout: 60000,
+//     });
+
+//     await page.waitForTimeout(4000);
+
+//     if (platform !== "instagram") {
+//       return {
+//         success: false,
+//         message: `Unfollow not supported for ${platform}`,
+//       };
+//     }
+
+//     // STEP 1: Find "Following" button
+//     const followingBtn = page.locator('button:has-text("Following")').first();
+
+//     const isFollowing = await followingBtn.count();
+//     if (!isFollowing) {
+//       console.log("ℹ️ User is NOT followed — skipping unfollow");
+//       return {
+//         success: true,
+//         message: "User was not followed, nothing to unfollow",
+//       };
+//     }
+
+//     // ✅ CLICK FOLLOWING (THIS WAS MISSING)
+//     await followingBtn.waitFor({ state: "visible", timeout: 15000 });
+//     await followingBtn.click();
+//     await page.waitForTimeout(2000);
+
+//     // STEP 2: Wait for dialog
+//     const dialog = page.locator('div[role="dialog"]').first();
+//     await dialog.waitFor({ state: "visible", timeout: 15000 });
+
+//     // STEP 3: Click Unfollow
+//     const unfollowBtn = dialog
+//       .locator('div[role="button"]:has-text("Unfollow")')
+//       .first();
+
+//     await unfollowBtn.waitFor({ state: "visible", timeout: 15000 });
+//     await unfollowBtn.click();
+
+//     await page.waitForTimeout(3000);
+
+//     console.log("✅ Unfollowed successfully");
+//     return {
+//       success: true,
+//       message: "User unfollowed successfully",
+//     };
+//   } catch (error) {
+//     console.error("❌ Unfollow failed:", error.message);
+//     return {
+//       success: false,
+//       message: error.message,
+//     };
+//   }
+// }
 
 // Helper function to extract auth token
 function extractAuthToken(cookies, platform) {
