@@ -401,84 +401,133 @@ async function createPost(page, platform, task) {
 // INSTAGRAM POST
 // ==========================================
 async function createInstagramPost(page, postContent) {
-  console.log("📸 Creating Instagram post (FILE PATH method)...");
-
+  console.log("📸 Creating Instagram post... new code");
+  
   try {
+    // 1️⃣ Open Instagram
     await page.goto("https://www.instagram.com/", {
       waitUntil: "domcontentloaded",
       timeout: 60000,
     });
+    await page.waitForTimeout(5000);
 
-    await page.waitForTimeout(4000);
-
-    // Close popups
+    // 2️⃣ Close popups
     await page.click("text=Not now").catch(() => {});
     await page.click('button:has-text("Not Now")').catch(() => {});
     await page.waitForTimeout(2000);
 
-    // Click Create button
+    // 3️⃣ Click Create button
     const createButton = page.locator(
       'svg[aria-label="New post"], svg[aria-label="Create"]'
     ).first();
-
-    await createButton.waitFor({ state: "visible", timeout: 15000 });
+    await createButton.waitFor({ state: "visible", timeout: 20000 });
     await createButton.click({ force: true });
     console.log("✅ Create button clicked");
 
     await page.waitForTimeout(3000);
 
-    // File input
-    const fileInput = page.locator('input[type="file"]').first();
-    await fileInput.waitFor({ state: "attached", timeout: 15000 });
-
-    // -----------------------------
-    // ✅ HANDLE FILE PATH FROM LARAVEL
-    // -----------------------------
-    if (!postContent.media_urls) {
-      throw new Error("media_urls missing from task");
+    // 4️⃣ Get image path
+    if (!postContent.media_urls && !postContent.media_absolute_path) {
+      throw new Error("media_urls or media_absolute_path missing from task");
     }
 
-    // Laravel sends: images/tasks/xyz.jpg
-    const absoluteImagePath = path.resolve(
-      __dirname,
-      "../laravel-project/public",
-      postContent.media_urls
-    );
+    let absoluteImagePath = postContent.media_absolute_path;
+
+    if (!absoluteImagePath) {
+      absoluteImagePath = path.join(
+        "C:",
+        "wamp64",
+        "www",
+        "social-automation",
+        "public",
+        postContent.media_urls
+      );
+    }
+
+    console.log("🔍 Looking for image at:", absoluteImagePath);
 
     if (!fs.existsSync(absoluteImagePath)) {
       throw new Error(`Image file not found: ${absoluteImagePath}`);
     }
 
-    // Upload image
-    await fileInput.setInputFiles(absoluteImagePath);
+    console.log("✅ Image file found!");
+
+    // 5️⃣ CLICK "SELECT FROM COMPUTER" BUTTON FIRST
+    console.log("⏳ Looking for 'Select from computer' button...");
+    
+    // Wait for the dialog/modal to appear
+    await page.waitForTimeout(2000);
+    
+    // Try different possible button texts
+    let selectButton = null;
+    
+    try {
+      // Try "Select from computer"
+      selectButton = page.locator('button:has-text("Select from computer")');
+      await selectButton.waitFor({ state: "visible", timeout: 5000 });
+      console.log("✅ Found 'Select from computer' button");
+    } catch (e) {
+      try {
+        // Try "Select From Computer" (capital)
+        selectButton = page.locator('button:has-text("Select From Computer")');
+        await selectButton.waitFor({ state: "visible", timeout: 5000 });
+        console.log("✅ Found 'Select From Computer' button");
+      } catch (e2) {
+        // Try to find any button in the dialog
+        selectButton = page.locator('button').filter({ hasText: /select/i }).first();
+        console.log("✅ Found select button by filter");
+      }
+    }
+
+    // 6️⃣ NOW UPLOAD THE FILE
+    // Setup file chooser listener BEFORE clicking the button
+    const fileChooserPromise = page.waitForEvent('filechooser', { timeout: 10000 });
+    
+    // Click the button
+    await selectButton.click();
+    console.log("✅ Clicked select button");
+
+    // Wait for file chooser
+    const fileChooser = await fileChooserPromise;
+    await fileChooser.setFiles(absoluteImagePath);
     console.log("✅ Image uploaded:", absoluteImagePath);
 
-    // Wait preview
-    await page.waitForTimeout(5000);
+    // 7️⃣ Wait for preview
+    console.log("⏳ Waiting for image preview...");
+    await page.waitForTimeout(8000);
 
-    // Next
+    // 8️⃣ Click Next (1st)
+    console.log("⏳ Looking for Next button...");
+    await page.waitForSelector('button:has-text("Next")', { timeout: 10000 });
     await page.locator('button:has-text("Next")').first().click();
-    await page.waitForTimeout(2000);
+    console.log("✅ Clicked Next (1st)");
+    await page.waitForTimeout(3000);
 
+    // 9️⃣ Click Next (2nd)
     await page.locator('button:has-text("Next")').first().click();
-    await page.waitForTimeout(2000);
+    console.log("✅ Clicked Next (2nd)");
+    await page.waitForTimeout(3000);
 
-    // Caption
+    // 🔟 Caption
     const caption =
       (postContent.content || "") +
       "\n\n" +
       (postContent.hashtags || "");
 
-    await page.fill(
-      'textarea[aria-label*="caption"], textarea[placeholder*="caption"]',
-      caption.trim()
-    );
+    const captionBox = page.locator(
+      'textarea[aria-label*="caption"], textarea[placeholder*="caption"], div[contenteditable="true"]'
+    ).first();
+    
+    await captionBox.waitFor({ state: "visible", timeout: 10000 });
+    await captionBox.click();
+    await captionBox.fill(caption.trim());
+    console.log("✅ Caption added");
+    await page.waitForTimeout(2000);
 
-    await page.waitForTimeout(1500);
-
-    // Share
+    // 1️⃣1️⃣ Share
     await page.locator('button:has-text("Share")').first().click();
-    await page.waitForTimeout(10000);
+    console.log("✅ Share button clicked");
+    await page.waitForTimeout(12000);
 
     console.log("✅ Instagram post created successfully");
 
@@ -489,6 +538,19 @@ async function createInstagramPost(page, postContent) {
 
   } catch (error) {
     console.error("❌ Instagram post failed:", error.message);
+    console.error("Stack:", error.stack);
+    
+    // Take screenshot for debugging
+    try {
+      await page.screenshot({ 
+        path: `error_${Date.now()}.png`,
+        fullPage: true 
+      });
+      console.log("📸 Error screenshot saved");
+    } catch (e) {
+      console.log("Could not save screenshot");
+    }
+    
     return {
       success: false,
       message: error.message,
