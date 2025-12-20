@@ -94,7 +94,7 @@ app.post("/login-social", async (req, res) => {
 
     // Launch new browser
     const browser = await chromium.launch({
-      headless: false,
+      headless: true,
       proxy: proxy_host
         ? {
             server: `http://${proxy_host}:${proxy_port}`,
@@ -418,9 +418,9 @@ async function createInstagramPost(page, postContent) {
     await page.waitForTimeout(2000);
 
     // 3️⃣ Click Create button
-    const createButton = page.locator(
-      'svg[aria-label="New post"], svg[aria-label="Create"]'
-    ).first();
+    const createButton = page
+      .locator('svg[aria-label="New post"], svg[aria-label="Create"]')
+      .first();
 
     await createButton.waitFor({ state: "visible", timeout: 20000 });
     await createButton.click();
@@ -464,19 +464,19 @@ async function createInstagramPost(page, postContent) {
 
     // 7️⃣ Wait for preview and dialog to load
     await page.waitForTimeout(4000);
-    
+
     // Wait for the crop dialog to be visible
-    await page.locator('[role="dialog"]').waitFor({ 
-      state: "visible", 
-      timeout: 15000 
+    await page.locator('[role="dialog"]').waitFor({
+      state: "visible",
+      timeout: 15000,
     });
-    
+
     console.log("✅ Crop dialog loaded");
     await page.waitForTimeout(2000);
 
     // 8️⃣ Click Next button (Crop/Edit step) - Using multiple strategies
     console.log("🔘 Attempting to click Next button (crop step)...");
-    
+
     const nextButtonSelectors = [
       'div[role="button"]:has-text("Next")',
       'button:has-text("Next")',
@@ -503,11 +503,16 @@ async function createInstagramPost(page, postContent) {
     if (!nextClicked) {
       // Last resort: click by position (top-right of dialog)
       try {
-        await page.locator('text=Next').first().click({ force: true, timeout: 5000 });
+        await page
+          .locator("text=Next")
+          .first()
+          .click({ force: true, timeout: 5000 });
         console.log("✅ Next clicked using force click");
         nextClicked = true;
       } catch (e) {
-        throw new Error("Could not find or click Next button after image upload");
+        throw new Error(
+          "Could not find or click Next button after image upload"
+        );
       }
     }
 
@@ -515,7 +520,7 @@ async function createInstagramPost(page, postContent) {
 
     // 9️⃣ Click Next button again (Filters step)
     console.log("🔘 Attempting to click Next button (filters step)...");
-    
+
     nextClicked = false;
     for (const selector of nextButtonSelectors) {
       try {
@@ -532,7 +537,10 @@ async function createInstagramPost(page, postContent) {
 
     if (!nextClicked) {
       try {
-        await page.locator('text=Next').first().click({ force: true, timeout: 5000 });
+        await page
+          .locator("text=Next")
+          .first()
+          .click({ force: true, timeout: 5000 });
         console.log("✅ Next clicked (filters) using force click");
       } catch (e) {
         throw new Error("Could not find or click Next button on filters page");
@@ -543,8 +551,9 @@ async function createInstagramPost(page, postContent) {
 
     // 🔟 Add Caption
     console.log("📝 Adding caption...");
-    
-    const caption = (postContent.content || "") + "\n\n" + (postContent.hashtags || "");
+
+    const caption =
+      (postContent.content || "") + "\n\n" + (postContent.hashtags || "");
 
     const captionSelectors = [
       'div[aria-label="Write a caption..."]',
@@ -576,7 +585,7 @@ async function createInstagramPost(page, postContent) {
 
     // 1️⃣1️⃣ Click Share button
     console.log("📤 Clicking Share button...");
-    
+
     const shareSelectors = [
       'button:has-text("Share")',
       'div[role="button"]:has-text("Share")',
@@ -606,14 +615,19 @@ async function createInstagramPost(page, postContent) {
 
     // Check for success indicators
     const successIndicators = [
-      'text=Your post has been shared',
-      'text=Post shared',
+      "text=Your post has been shared",
+      "text=Post shared",
       'img[alt*="Animated checkmark"]',
     ];
 
     let postSuccess = false;
     for (const indicator of successIndicators) {
-      if (await page.locator(indicator).isVisible().catch(() => false)) {
+      if (
+        await page
+          .locator(indicator)
+          .isVisible()
+          .catch(() => false)
+      ) {
         postSuccess = true;
         break;
       }
@@ -621,28 +635,27 @@ async function createInstagramPost(page, postContent) {
 
     console.log("✅ Instagram post created successfully");
 
-    return { 
-      success: true, 
-      message: postSuccess ? "Post confirmed" : "Post likely successful"
+    return {
+      success: true,
+      message: postSuccess ? "Post confirmed" : "Post likely successful",
     };
-
   } catch (error) {
     console.error("❌ Instagram post failed:", error.message);
-    
+
     // Take screenshot for debugging
     try {
-      await page.screenshot({ 
+      await page.screenshot({
         path: `instagram-error-${Date.now()}.png`,
-        fullPage: true 
+        fullPage: true,
       });
       console.log("📸 Error screenshot saved");
     } catch (screenshotError) {
       console.log("⚠️ Could not save screenshot");
     }
 
-    return { 
-      success: false, 
-      message: error.message 
+    return {
+      success: false,
+      message: error.message,
     };
   }
 }
@@ -797,7 +810,12 @@ async function likePost(page, platform, targetUrl) {
     await page.waitForTimeout(8000);
 
     // Detect session expired
-    if (await page.locator('input[name="username"]').isVisible({ timeout: 5000 }).catch(() => false)) {
+    if (
+      await page
+        .locator('input[name="username"]')
+        .isVisible({ timeout: 5000 })
+        .catch(() => false)
+    ) {
       throw new Error("Instagram session expired (login required)");
     }
 
@@ -807,14 +825,18 @@ async function likePost(page, platform, targetUrl) {
 
     // Check if already liked (multiple possible red heart indicators)
     const alreadyLiked = await page.evaluate(() => {
-      const svgs = document.querySelectorAll('svg');
+      const svgs = document.querySelectorAll("svg");
       for (const svg of svgs) {
-        const fill = svg.getAttribute('fill');
-        const stroke = svg.getAttribute('stroke');
-        const ariaLabel = svg.getAttribute('aria-label');
-        
-        if ((fill === '#ed4956' || fill === 'rgb(255, 48, 64)' || stroke === '#ed4956') ||
-            (ariaLabel && ariaLabel.toLowerCase().includes('unlike'))) {
+        const fill = svg.getAttribute("fill");
+        const stroke = svg.getAttribute("stroke");
+        const ariaLabel = svg.getAttribute("aria-label");
+
+        if (
+          fill === "#ed4956" ||
+          fill === "rgb(255, 48, 64)" ||
+          stroke === "#ed4956" ||
+          (ariaLabel && ariaLabel.toLowerCase().includes("unlike"))
+        ) {
           return true;
         }
       }
@@ -828,56 +850,69 @@ async function likePost(page, platform, targetUrl) {
 
     // Try multiple selector strategies
     let likeButton = null;
-    
+
     // Strategy 1: Find by aria-label
     likeButton = page.locator('[aria-label="Like"]').first();
-    let isVisible = await likeButton.isVisible({ timeout: 3000 }).catch(() => false);
-    
+    let isVisible = await likeButton
+      .isVisible({ timeout: 3000 })
+      .catch(() => false);
+
     // Strategy 2: Find SVG with specific viewBox (Instagram like icon)
     if (!isVisible) {
       console.log("Trying strategy 2: SVG viewBox...");
-      likeButton = page.locator('svg[aria-label="Like"]').locator('..').first();
-      isVisible = await likeButton.isVisible({ timeout: 3000 }).catch(() => false);
+      likeButton = page.locator('svg[aria-label="Like"]').locator("..").first();
+      isVisible = await likeButton
+        .isVisible({ timeout: 3000 })
+        .catch(() => false);
     }
-    
+
     // Strategy 3: Find button/div containing heart SVG path
     if (!isVisible) {
       console.log("Trying strategy 3: Heart path selector...");
       const heartPaths = [
         'path[d*="M16.792 3.904A4.989"]', // Common Instagram heart path
         'path[d*="M34.6 3.1"]', // Alternative heart path
-        'path[d*="M16.792"]' // Partial match
+        'path[d*="M16.792"]', // Partial match
       ];
-      
+
       for (const pathSelector of heartPaths) {
-        likeButton = page.locator(`button:has(${pathSelector}), div[role="button"]:has(${pathSelector}), span[role="button"]:has(${pathSelector})`).first();
-        isVisible = await likeButton.isVisible({ timeout: 2000 }).catch(() => false);
+        likeButton = page
+          .locator(
+            `button:has(${pathSelector}), div[role="button"]:has(${pathSelector}), span[role="button"]:has(${pathSelector})`
+          )
+          .first();
+        isVisible = await likeButton
+          .isVisible({ timeout: 2000 })
+          .catch(() => false);
         if (isVisible) break;
       }
     }
-    
+
     // Strategy 4: Find by JavaScript evaluation (most reliable)
     if (!isVisible) {
       console.log("Trying strategy 4: JavaScript evaluation...");
       const likeButtonFound = await page.evaluate(() => {
         // Find all SVGs
-        const svgs = document.querySelectorAll('svg');
-        
+        const svgs = document.querySelectorAll("svg");
+
         for (const svg of svgs) {
-          const ariaLabel = svg.getAttribute('aria-label');
-          
+          const ariaLabel = svg.getAttribute("aria-label");
+
           // Look for "Like" label
-          if (ariaLabel && ariaLabel.toLowerCase() === 'like') {
+          if (ariaLabel && ariaLabel.toLowerCase() === "like") {
             // Find the clickable parent
             let parent = svg.parentElement;
             while (parent) {
-              const role = parent.getAttribute('role');
+              const role = parent.getAttribute("role");
               const tag = parent.tagName.toLowerCase();
-              
-              if (tag === 'button' || role === 'button' || 
-                  (tag === 'div' && role === 'button') ||
-                  (tag === 'span' && parent.onclick)) {
-                parent.setAttribute('data-like-button', 'true');
+
+              if (
+                tag === "button" ||
+                role === "button" ||
+                (tag === "div" && role === "button") ||
+                (tag === "span" && parent.onclick)
+              ) {
+                parent.setAttribute("data-like-button", "true");
                 return true;
               }
               parent = parent.parentElement;
@@ -886,10 +921,12 @@ async function likePost(page, platform, targetUrl) {
         }
         return false;
       });
-      
+
       if (likeButtonFound) {
         likeButton = page.locator('[data-like-button="true"]').first();
-        isVisible = await likeButton.isVisible({ timeout: 2000 }).catch(() => false);
+        isVisible = await likeButton
+          .isVisible({ timeout: 2000 })
+          .catch(() => false);
       }
     }
 
@@ -904,7 +941,7 @@ async function likePost(page, platform, targetUrl) {
     await page.waitForTimeout(300 + Math.random() * 700);
     await likeButton.hover({ timeout: 10000 });
     await page.waitForTimeout(200 + Math.random() * 500);
-    
+
     // Try click with different methods
     try {
       await likeButton.click({ timeout: 10000, delay: 100 });
@@ -915,17 +952,21 @@ async function likePost(page, platform, targetUrl) {
 
     // Wait and verify
     await page.waitForTimeout(5000);
-    
+
     // Check for red heart or "Unlike" label
     const confirmed = await page.evaluate(() => {
-      const svgs = document.querySelectorAll('svg');
+      const svgs = document.querySelectorAll("svg");
       for (const svg of svgs) {
-        const fill = svg.getAttribute('fill');
-        const stroke = svg.getAttribute('stroke');
-        const ariaLabel = svg.getAttribute('aria-label');
-        
-        if ((fill === '#ed4956' || fill === 'rgb(255, 48, 64)' || stroke === '#ed4956') ||
-            (ariaLabel && ariaLabel.toLowerCase().includes('unlike'))) {
+        const fill = svg.getAttribute("fill");
+        const stroke = svg.getAttribute("stroke");
+        const ariaLabel = svg.getAttribute("aria-label");
+
+        if (
+          fill === "#ed4956" ||
+          fill === "rgb(255, 48, 64)" ||
+          stroke === "#ed4956" ||
+          (ariaLabel && ariaLabel.toLowerCase().includes("unlike"))
+        ) {
           return true;
         }
       }
@@ -935,766 +976,558 @@ async function likePost(page, platform, targetUrl) {
     if (!confirmed) {
       console.warn("⚠️ No red heart visible – like may still have worked");
       // Take debug screenshot
-      await page.screenshot({ path: 'like-attempt.png', fullPage: false });
-      return { success: true, message: "Like attempted (no visual confirmation)" };
+      await page.screenshot({ path: "like-attempt.png", fullPage: false });
+      return {
+        success: true,
+        message: "Like attempted (no visual confirmation)",
+      };
     }
 
     console.log("❤️ Like successful & confirmed");
     return { success: true, message: "Post liked successfully" };
-
   } catch (error) {
     console.error("❌ Like failed:", error.message);
     // Debug screenshot
     try {
-      await page.screenshot({ path: 'like-error.png', fullPage: false });
+      await page.screenshot({ path: "like-error.png", fullPage: false });
     } catch {}
     return { success: false, message: error.message };
   }
 }
 
-
-
-
 // ==========================================
 // COMMENT FUNCTION
 // ==========================================
+
+
+async function instagramComment(page, targetUrl, commentText) {
+  console.log("💬 Commenting on Instagram...");
+
+  if (!targetUrl) throw new Error("Target URL missing");
+  if (!commentText) throw new Error("Comment text missing");
+
+  const cleanUrl = targetUrl.split("?")[0];
+
+  await page.goto(cleanUrl, {
+    waitUntil: "domcontentloaded",
+    timeout: 60000,
+  });
+
+  await page.waitForTimeout(5000);
+
+  // Check for session expired
+  if (
+    await page
+      .locator('input[name="username"]')
+      .isVisible({ timeout: 5000 })
+      .catch(() => false)
+  ) {
+    throw new Error("Instagram session expired (login required)");
+  }
+
+  // Scroll to load post
+  await page.evaluate(() => window.scrollTo(0, 300));
+  await page.waitForTimeout(2000);
+
+  // Find comment box
+  const commentSelectors = [
+    'textarea[placeholder*="Add a comment"]',
+    'textarea[aria-label*="Add a comment"]',
+    'div[role="textbox"][contenteditable="true"]',
+  ];
+
+  let commentBox = null;
+  for (const sel of commentSelectors) {
+    const box = page.locator(sel).first();
+    if (await box.isVisible({ timeout: 5000 }).catch(() => false)) {
+      commentBox = box;
+      break;
+    }
+  }
+
+  if (!commentBox) {
+    await page.screenshot({
+      path: `instagram-comment-error-${Date.now()}.png`,
+      fullPage: true,
+    });
+    throw new Error("Instagram comment box not found");
+  }
+
+  await commentBox.scrollIntoViewIfNeeded();
+  await commentBox.click({ force: true });
+  await commentBox.fill("");
+  await commentBox.type(commentText, { delay: 100 + Math.random() * 100 });
+  await page.waitForTimeout(1000);
+
+  // Find Post button
+  const postBtnSelectors = [
+    'button:has-text("Post")',
+    'div[role="button"]:has-text("Post")',
+  ];
+
+  let postBtn = null;
+  for (const sel of postBtnSelectors) {
+    const btn = page.locator(sel).first();
+    if (await btn.isVisible({ timeout: 5000 }).catch(() => false)) {
+      postBtn = btn;
+      break;
+    }
+  }
+
+  if (!postBtn) throw new Error("Instagram Post button not found");
+
+  await postBtn.click({ force: true });
+  await page.waitForTimeout(5000);
+
+  const posted = await page
+    .locator(`text=${commentText}`)
+    .first()
+    .isVisible()
+    .catch(() => false);
+  return {
+    success: true,
+    message: posted
+      ? "Instagram comment posted"
+      : "Instagram comment posted (confirmation pending)",
+  };
+}
+
+async function facebookComment(page, targetUrl, commentText) {
+  console.log("💬 Commenting on Facebook...");
+
+  if (!targetUrl) throw new Error("Target URL missing");
+  if (!commentText) throw new Error("Comment text missing");
+
+  await page.goto(targetUrl, {
+    waitUntil: "domcontentloaded",
+    timeout: 60000,
+  });
+
+  await page.waitForTimeout(5000);
+
+  // Close popups
+  await page
+    .locator('[aria-label="Close"]')
+    .click()
+    .catch(() => {});
+  await page.waitForTimeout(1000);
+
+  // Find comment box
+  const commentSelectors = [
+    'div[aria-label="Write a comment"]',
+    'div[role="textbox"][contenteditable="true"]',
+    'textarea[placeholder*="Write a comment"]',
+  ];
+
+  let commentBox = null;
+  for (const sel of commentSelectors) {
+    const box = page.locator(sel).first();
+    if (await box.isVisible({ timeout: 5000 }).catch(() => false)) {
+      commentBox = box;
+      break;
+    }
+  }
+
+  if (!commentBox) {
+    await page.screenshot({
+      path: `facebook-comment-error-${Date.now()}.png`,
+      fullPage: true,
+    });
+    throw new Error("Facebook comment box not found");
+  }
+
+  await commentBox.scrollIntoViewIfNeeded();
+  await commentBox.click({ force: true });
+  await commentBox.fill("");
+  await commentBox.type(commentText, { delay: 100 + Math.random() * 100 });
+  await page.waitForTimeout(1000);
+
+  // Click Post button
+  const postBtnSelectors = [
+    'div[aria-label="Press Enter to post"]',
+    'div[role="button"]:has-text("Enter")',
+  ];
+
+  let postBtn = null;
+  for (const sel of postBtnSelectors) {
+    const btn = page.locator(sel).first();
+    if (await btn.isVisible({ timeout: 5000 }).catch(() => false)) {
+      postBtn = btn;
+      break;
+    }
+  }
+
+  if (!postBtn) throw new Error("Facebook Post button not found");
+
+  await postBtn.click({ force: true });
+  await page.waitForTimeout(5000);
+
+  return {
+    success: true,
+    message: "Facebook comment posted (confirmation may take time)",
+  };
+}
+
 async function commentOnPost(page, platform, targetUrl, commentText) {
-  console.log(`💬 Commenting on ${platform}... new....`);
   try {
-    if (!targetUrl) throw new Error("Target URL missing");
-    if (!commentText) throw new Error("Comment text missing");
-    if (platform !== "instagram") throw new Error("Platform not supported");
-    
-    const cleanUrl = targetUrl.split("?")[0];
-    
-    // Navigate with error handling
-    try {
-      await page.goto(cleanUrl, { 
-        waitUntil: "domcontentloaded",
-        timeout: 60000 
-      });
-    } catch (navError) {
-      if (!page.url().includes('instagram.com')) {
-        throw new Error("Failed to navigate to Instagram post");
-      }
-      console.log("⚠️ Navigation timeout but page loaded, continuing...");
+    if (platform === "instagram") {
+      return await instagramComment(page, targetUrl, commentText);
     }
-    
-    await page.waitForTimeout(5000);
-    
-    // Detect session expired
-    if (await page.locator('input[name="username"]').isVisible({ timeout: 5000 }).catch(() => false)) {
-      throw new Error("Instagram session expired (login required)");
+    if (platform === "facebook") {
+      return await facebookComment(page, targetUrl, commentText);
     }
-    
-    // Scroll to load the post content
-    await page.evaluate(() => {
-      window.scrollTo(0, 300);
-    });
-    await page.waitForTimeout(2000);
-    
-    // Try multiple selectors for the comment icon (Instagram has variations)
-    const commentIconSelectors = [
-      'svg[aria-label="Comment"]',
-      'svg[aria-label="Comment on this post"]',
-      'button[aria-label="Comment"]',
-      'span:has(svg[aria-label*="Comment"])',
-    ];
-    
-    let commentIconClicked = false;
-    
-    for (const selector of commentIconSelectors) {
-      try {
-        const icon = page.locator(selector).first();
-        if (await icon.isVisible({ timeout: 5000 })) {
-          await icon.scrollIntoViewIfNeeded();
-          await icon.click({ force: true, timeout: 5000 });
-          console.log(`✅ Clicked comment icon using selector: ${selector}`);
-          commentIconClicked = true;
-          await page.waitForTimeout(2000);
-          break;
-        }
-      } catch (e) {
-        console.log(`⚠️ Failed to click with selector: ${selector}`);
-        continue;
-      }
-    }
-    
-    if (!commentIconClicked) {
-      console.log("⚠️ Comment icon not clicked, trying direct textbox access");
-    }
-    
-    // Scroll down more to ensure comment box is loaded
-    await page.evaluate(() => {
-      window.scrollBy(0, 400);
-    });
-    await page.waitForTimeout(2000);
-    
-    // Try multiple selectors for comment input box
-    const commentBoxSelectors = [
-      'textarea[placeholder*="Add a comment"]',
-      'textarea[aria-label*="Add a comment"]',
-      'div[role="textbox"][contenteditable="true"]',
-      'textarea[placeholder*="comment"]',
-      'form textarea',
-    ];
-    
-    let commentBox = null;
-    
-    for (const selector of commentBoxSelectors) {
-      try {
-        const box = page.locator(selector).first();
-        if (await box.isVisible({ timeout: 5000 })) {
-          commentBox = box;
-          console.log(`✅ Found comment box using selector: ${selector}`);
-          break;
-        }
-      } catch (e) {
-        console.log(`⚠️ Comment box not found with selector: ${selector}`);
-        continue;
-      }
-    }
-    
-    if (!commentBox) {
-      // Last resort: take screenshot for debugging
-      await page.screenshot({ path: 'comment-box-not-found.png', fullPage: true });
-      throw new Error("Comment input box not found - check comment-box-not-found.png");
-    }
-    
-    // Interact with comment box
-    await commentBox.scrollIntoViewIfNeeded();
-    await commentBox.click({ force: true });
-    await page.waitForTimeout(1000);
-    
-    // Clear any existing text
-    await commentBox.fill('');
-    await page.waitForTimeout(500);
-    
-    // Type comment with human-like delay
-    await commentBox.type(commentText, { delay: 100 + Math.random() * 100 });
-    await page.waitForTimeout(1000);
-    
-    // Find and click the Post button with multiple selectors
-    const postButtonSelectors = [
-      'button:has-text("Post")',
-      'div[role="button"]:has-text("Post")',
-      'button[type="submit"]',
-      'button:has(div:text("Post"))',
-    ];
-    
-    let postButton = null;
-    
-    for (const selector of postButtonSelectors) {
-      try {
-        const btn = page.locator(selector).first();
-        if (await btn.isVisible({ timeout: 5000 })) {
-          postButton = btn;
-          console.log(`✅ Found post button using selector: ${selector}`);
-          break;
-        }
-      } catch (e) {
-        continue;
-      }
-    }
-    
-    if (!postButton) {
-      throw new Error("Post button not found");
-    }
-    
-    await postButton.scrollIntoViewIfNeeded();
-    await postButton.hover();
-    await page.waitForTimeout(500);
-    await postButton.click({ force: true });
-    
-    // Wait for comment to be posted
-    await page.waitForTimeout(5000);
-    
-    // Verify comment posted
-    const commentVisible = await page.locator(`text=${commentText}`).first().isVisible({ timeout: 10000 }).catch(() => false);
-    console.log(commentVisible ? "✅ Comment posted & confirmed" : "✅ Comment posted (confirmation pending)");
-    
     return {
-      success: true,
-      message: commentVisible ? "Comment posted successfully" : "Comment posted (confirmation pending)",
-      post_url: cleanUrl,
+      success: false,
+      message: `Commenting not supported on ${platform}`,
     };
   } catch (error) {
     console.error("❌ Comment failed:", error.message);
-    // Debug screenshot with timestamp
-    const timestamp = Date.now();
-    await page.screenshot({ 
-      path: `comment-error-${timestamp}.png`, 
-      fullPage: true 
-    }).catch(() => {});
-    
-    return { 
-      success: false, 
-      message: error.message,
-      debug_screenshot: `comment-error-${timestamp}.png`
-    };
+    await page
+      .screenshot({
+        path: `${platform}-comment-error-${Date.now()}.png`,
+        fullPage: true,
+      })
+      .catch(() => {});
+    return { success: false, message: error.message };
   }
 }
+
 // ==========================================
 // FOLLOW USER FUNCTION
 // ==========================================
+
+async function instagramFollow(page, targetUrl) {
+  console.log("📸 Instagram follow...");
+
+  await page.goto(targetUrl, {
+    waitUntil: "domcontentloaded",
+    timeout: 60000,
+  });
+
+  await page.waitForTimeout(4000);
+
+  const followBtn = page
+    .locator('button:has-text("Follow"), button:has-text("Follow Back")')
+    .first();
+
+  await followBtn.waitFor({ state: "visible", timeout: 15000 });
+  await followBtn.click();
+
+  console.log("✅ Instagram follow done");
+}
+
+async function facebookFollow(page, targetUrl) {
+  console.log("📘 Processing Facebook friend request...");
+
+  await page.goto(targetUrl, {
+    waitUntil: "domcontentloaded",
+    timeout: 60000,
+  });
+
+  await page.waitForTimeout(8000);
+
+  await page
+    .locator('[aria-label="Close"]')
+    .click()
+    .catch(() => {});
+  await page.waitForTimeout(1000);
+
+  const addFriendSelectors = [
+    'div[aria-label="Add Friend"]',
+    'div[aria-label="Add friend"]',
+    'span:text-is("Add Friend")',
+    'span:text-is("Add friend")',
+    'div[role="button"]:has-text("Add Friend")',
+    '//div[@aria-label="Add Friend"]',
+    '//span[text()="Add Friend"]',
+  ];
+
+  for (const selector of addFriendSelectors) {
+    try {
+      const btn = page.locator(selector).first();
+      if (await btn.isVisible({ timeout: 8000 })) {
+        await btn.scrollIntoViewIfNeeded();
+        await page.waitForTimeout(1000);
+        await btn.click({ timeout: 5000 });
+        console.log(`✅ Facebook Add Friend clicked: ${selector}`);
+        return;
+      }
+    } catch {}
+  }
+
+  const already = await page
+    .locator(
+      'span:has-text("Friends"), span:has-text("Friend request sent"), span:has-text("Cancel request")'
+    )
+    .first()
+    .isVisible()
+    .catch(() => false);
+
+  if (already) {
+    console.log("ℹ️ Facebook request already sent / already friends");
+    return;
+  }
+
+  await page.screenshot({
+    path: `facebook-follow-error-${Date.now()}.png`,
+    fullPage: true,
+  });
+
+  throw new Error("Facebook Add Friend button not found");
+}
+
+async function twitterFollow(page, targetUrl) {
+  console.log("🐦 Processing Twitter/X follow...");
+
+  await page.goto(targetUrl, {
+    waitUntil: "domcontentloaded",
+    timeout: 60000,
+  });
+
+  await page.waitForTimeout(5000);
+
+  const selectors = [
+    '[data-testid$="-follow"]',
+    'button:has-text("Follow")',
+    '[role="button"]:has-text("Follow")',
+  ];
+
+  for (const selector of selectors) {
+    try {
+      const btn = page.locator(selector).first();
+      if (await btn.isVisible({ timeout: 5000 })) {
+        await btn.click({ timeout: 5000 });
+        console.log(`✅ Twitter follow clicked: ${selector}`);
+        return;
+      }
+    } catch {}
+  }
+
+  const already = await page
+    .locator('button:has-text("Following")')
+    .first()
+    .isVisible()
+    .catch(() => false);
+
+  if (already) {
+    console.log("ℹ️ Already following on Twitter/X");
+    return;
+  }
+
+  throw new Error("Twitter follow button not found");
+}
 async function followUser(page, platform, targetUrl) {
   console.log(`👤 Following user on ${platform}...`);
 
   try {
-    // Navigate to target URL
-    console.log(`🌐 Navigating to: ${targetUrl}`);
-    await page.goto(targetUrl, {
-      waitUntil: "domcontentloaded",
-      timeout: 60000,
-    });
-
-    console.log("✅ Page loaded successfully");
-    await page.waitForTimeout(4000);
-
-    // Handle Instagram
     if (platform === "instagram") {
-      console.log("📸 Processing Instagram follow...");
-      
-      // Wait for profile to load
-      await page.waitForTimeout(3000);
-
-      // Multiple selectors for Instagram follow button
-      const followSelectors = [
-        'button:has-text("Follow")',
-        'button:has-text("Follow Back")',
-        'button._acan._acap._acas._aj1-',
-        'button >> text=Follow',
-        '[role="button"]:has-text("Follow")'
-      ];
-
-      let followed = false;
-      for (const selector of followSelectors) {
-        try {
-          const followBtn = page.locator(selector).first();
-          
-          // Check if button exists and is visible
-          const isVisible = await followBtn.isVisible({ timeout: 5000 }).catch(() => false);
-          
-          if (isVisible) {
-            await followBtn.click({ timeout: 5000 });
-            console.log(`✅ Instagram follow button clicked using: ${selector}`);
-            followed = true;
-            break;
-          }
-        } catch (e) {
-          console.log(`⚠️ Selector failed: ${selector}`);
-          continue;
-        }
-      }
-
-      if (!followed) {
-        // Check if already following
-        const alreadyFollowing = await page.locator('button:has-text("Following"), button:has-text("Requested")').first().isVisible().catch(() => false);
-        
-        if (alreadyFollowing) {
-          console.log("ℹ️ Already following this user");
-          return { success: true, message: "Already following this user" };
-        } else {
-          throw new Error("Could not find Instagram follow button");
-        }
-      }
-    }
-
-    // Handle Facebook
-    if (platform === "facebook") {
-      console.log("📘 Processing Facebook friend request...");
-      
-      // Wait for Facebook profile to fully load
-      await page.waitForTimeout(6000);
-
-      // Close any popups that might be blocking
-      await page.locator('[aria-label="Close"]').click().catch(() => {});
-      await page.waitForTimeout(1000);
-
-      // Multiple selectors for Facebook Add Friend button
-      const addFriendSelectors = [
-        'div[aria-label="Add Friend"]',
-        'div[aria-label="Add friend"]',
-        'span:text-is("Add Friend")',
-        'span:text-is("Add friend")',
-        'div[aria-label="Add Friend"] span',
-        'div[role="button"]:has-text("Add Friend")',
-        'div[role="button"]:has-text("Add friend")',
-        '//div[@aria-label="Add Friend"]',
-        '//div[@aria-label="Add friend"]',
-        '//span[text()="Add Friend"]',
-        '//span[text()="Add friend"]'
-      ];
-
-      let requestSent = false;
-      for (const selector of addFriendSelectors) {
-        try {
-          const addFriendBtn = page.locator(selector).first();
-          
-          // Check if button exists and is visible
-          const isVisible = await addFriendBtn.isVisible({ timeout: 8000 }).catch(() => false);
-          
-          if (isVisible) {
-            // Scroll button into view
-            await addFriendBtn.scrollIntoViewIfNeeded().catch(() => {});
-            await page.waitForTimeout(1000);
-            
-            // Click the button
-            await addFriendBtn.click({ timeout: 5000 });
-            console.log(`✅ Facebook Add Friend clicked using: ${selector}`);
-            requestSent = true;
-            break;
-          }
-        } catch (e) {
-          console.log(`⚠️ Selector failed: ${selector}`);
-          continue;
-        }
-      }
-
-      if (!requestSent) {
-        // Check if already friends or request sent
-        const alreadyFriends = await page.locator('span:has-text("Friends"), div[aria-label="Friends"], span:has-text("Friend request sent"), span:has-text("Cancel request")').first().isVisible().catch(() => false);
-        
-        if (alreadyFriends) {
-          console.log("ℹ️ Already friends or request already sent");
-          return { success: true, message: "Already friends or request sent" };
-        } else {
-          // Take screenshot for debugging
-          try {
-            await page.screenshot({ 
-              path: `facebook-follow-error-${Date.now()}.png`,
-              fullPage: true 
-            });
-            console.log("📸 Debug screenshot saved");
-          } catch (screenshotError) {
-            console.log("⚠️ Could not save screenshot");
-          }
-          
-          throw new Error("Could not find Facebook Add Friend button. Screenshot saved for debugging.");
-        }
-      }
-
-      // Wait for confirmation
-      await page.waitForTimeout(2000);
-      
-      // Check if request was sent successfully
-      const requestSentConfirm = await page.locator('span:has-text("Friend request sent"), span:has-text("Cancel request")').first().isVisible().catch(() => false);
-      
-      if (requestSentConfirm) {
-        console.log("✅ Facebook friend request sent successfully");
-      }
-    }
-
-    // Handle Twitter/X
-    if (platform === "twitter" || platform === "x") {
-      console.log("🐦 Processing Twitter/X follow...");
-      
-      await page.waitForTimeout(3000);
-
-      const twitterFollowSelectors = [
-        '[data-testid$="-follow"]',
-        '[data-testid="placementTracking"] button:has-text("Follow")',
-        'button:has-text("Follow")',
-        '[role="button"]:has-text("Follow")'
-      ];
-
-      let followed = false;
-      for (const selector of twitterFollowSelectors) {
-        try {
-          const followBtn = page.locator(selector).first();
-          const isVisible = await followBtn.isVisible({ timeout: 5000 }).catch(() => false);
-          
-          if (isVisible) {
-            await followBtn.click({ timeout: 5000 });
-            console.log(`✅ Twitter follow button clicked using: ${selector}`);
-            followed = true;
-            break;
-          }
-        } catch (e) {
-          continue;
-        }
-      }
-
-      if (!followed) {
-        const alreadyFollowing = await page.locator('button:has-text("Following")').first().isVisible().catch(() => false);
-        
-        if (alreadyFollowing) {
-          console.log("ℹ️ Already following this user");
-          return { success: true, message: "Already following this user" };
-        } else {
-          throw new Error("Could not find Twitter follow button");
-        }
-      }
+      await instagramFollow(page, targetUrl);
+    } else if (platform === "facebook") {
+      await facebookFollow(page, targetUrl);
+    } else if (platform === "twitter") {
+      await twitterFollow(page, targetUrl);
+    } else {
+      throw new Error(`Platform ${platform} not supported`);
     }
 
     await page.waitForTimeout(3000);
 
-    console.log("✅ Follow action completed successfully");
-    return { 
-      success: true, 
-      message: `${platform} follow/friend request sent successfully` 
-    };
-
+    return { success: true, message: "User followed successfully" };
   } catch (error) {
-    console.error("❌ Follow action failed:", error.message);
-    
-    // Take screenshot for debugging
-    try {
-      await page.screenshot({ 
-        path: `${platform}-follow-error-${Date.now()}.png`,
-        fullPage: true 
-      });
-      console.log("📸 Error screenshot saved");
-    } catch (screenshotError) {
-      console.log("⚠️ Could not save screenshot");
+    console.error("❌ Follow failed:", error.message);
+    return { success: false, message: error.message };
+  }
+}
+
+//unfollow
+
+async function instagramUnfollow(page, targetUrl) {
+  console.log("📸 Processing Instagram unfollow...");
+
+  await page.goto(targetUrl, {
+    waitUntil: "domcontentloaded",
+    timeout: 60000,
+  });
+
+  await page.waitForTimeout(5000);
+
+  const followingBtn = page.locator('button:has-text("Following")').first();
+  const isFollowing = await followingBtn.isVisible().catch(() => false);
+
+  if (!isFollowing) {
+    console.log("ℹ️ User is not followed");
+    return { success: true, message: "User was not followed" };
+  }
+
+  await followingBtn.click();
+  await page.waitForTimeout(2000);
+
+  const dialog = page.locator('div[role="dialog"]').first();
+  await dialog.waitFor({ state: "visible", timeout: 15000 });
+
+  const unfollowBtn = dialog
+    .locator('div[role="button"]:has-text("Unfollow")')
+    .first();
+
+  await unfollowBtn.waitFor({ state: "visible", timeout: 15000 });
+  await unfollowBtn.click();
+
+  await page.waitForTimeout(3000);
+
+  console.log("✅ Instagram unfollowed");
+  return { success: true, message: "Instagram unfollowed successfully" };
+}
+
+async function facebookUnfriend(page, targetUrl) {
+  console.log("📘 Processing Facebook unfriend...");
+
+  await page.goto(targetUrl, {
+    waitUntil: "domcontentloaded",
+    timeout: 60000,
+  });
+
+  await page.waitForTimeout(7000);
+
+  await page
+    .locator('[aria-label="Close"]')
+    .click()
+    .catch(() => {});
+  await page.waitForTimeout(1000);
+
+  const friendsSelectors = [
+    'div[aria-label="Friends"]',
+    'span:text-is("Friends")',
+    'div[role="button"]:has-text("Friends")',
+    '//span[text()="Friends"]',
+  ];
+
+  let friendsBtn = null;
+  for (const sel of friendsSelectors) {
+    const btn = page.locator(sel).first();
+    if (await btn.isVisible().catch(() => false)) {
+      friendsBtn = btn;
+      break;
+    }
+  }
+
+  if (!friendsBtn) {
+    const notFriends = await page
+      .locator('div[aria-label="Add Friend"]')
+      .first()
+      .isVisible()
+      .catch(() => false);
+
+    if (notFriends) {
+      return { success: true, message: "User is not a friend" };
     }
 
-    return { 
-      success: false, 
-      message: error.message 
-    };
+    throw new Error("Friends button not found");
   }
+
+  await friendsBtn.scrollIntoViewIfNeeded();
+  await friendsBtn.click();
+  await page.waitForTimeout(2000);
+
+  const unfriendSelectors = [
+    'div[role="menuitem"]:has-text("Unfriend")',
+    'span:text-is("Unfriend")',
+    '//span[text()="Unfriend"]',
+  ];
+
+  let unfriendBtn = null;
+  for (const sel of unfriendSelectors) {
+    const btn = page.locator(sel).first();
+    if (await btn.isVisible().catch(() => false)) {
+      unfriendBtn = btn;
+      break;
+    }
+  }
+
+  if (!unfriendBtn) {
+    throw new Error("Unfriend option not found");
+  }
+
+  await unfriendBtn.click();
+  await page.waitForTimeout(2000);
+
+  const confirmBtn = page
+    .locator('div[role="button"]:has-text("Confirm"), span:text-is("Confirm")')
+    .first();
+
+  if (await confirmBtn.isVisible().catch(() => false)) {
+    await confirmBtn.click();
+  }
+
+  await page.waitForTimeout(3000);
+
+  console.log("✅ Facebook unfriended");
+  return { success: true, message: "Facebook unfriended successfully" };
+}
+
+async function twitterUnfollow(page, targetUrl) {
+  console.log("🐦 Processing Twitter/X unfollow...");
+
+  await page.goto(targetUrl, {
+    waitUntil: "domcontentloaded",
+    timeout: 60000,
+  });
+
+  await page.waitForTimeout(4000);
+
+  const unfollowBtn = page.locator('[data-testid$="-unfollow"]').first();
+  const isFollowing = await unfollowBtn.isVisible().catch(() => false);
+
+  if (!isFollowing) {
+    return { success: true, message: "User was not followed" };
+  }
+
+  await unfollowBtn.click();
+  await page.waitForTimeout(2000);
+
+  const confirmBtn = page
+    .locator('[data-testid="confirmationSheetConfirm"]')
+    .first();
+
+  await confirmBtn.waitFor({ state: "visible", timeout: 10000 });
+  await confirmBtn.click();
+
+  await page.waitForTimeout(3000);
+
+  console.log("✅ Twitter unfollowed");
+  return { success: true, message: "Twitter unfollowed successfully" };
 }
 
 async function unfollowUser(page, platform, targetUrl) {
   console.log(`🚫 Unfollowing user on ${platform}...`);
 
   try {
-    // Navigate to target URL
-    console.log(`🌐 Navigating to: ${targetUrl}`);
-    await page.goto(targetUrl, {
-      waitUntil: "domcontentloaded",
-      timeout: 60000,
-    });
-
-    console.log("✅ Page loaded successfully");
-    await page.waitForTimeout(5000);
-
-    /* ================= INSTAGRAM ================= */
     if (platform === "instagram") {
-      console.log("📸 Processing Instagram unfollow...");
-      
-      const followingBtn = page.locator('button:has-text("Following")').first();
-
-      const isFollowing = await followingBtn.count();
-      if (!isFollowing) {
-        console.log("ℹ️ User is NOT followed — skipping unfollow");
-        return {
-          success: true,
-          message: "User was not followed, nothing to unfollow",
-        };
-      }
-
-      await followingBtn.waitFor({ state: "visible", timeout: 15000 });
-      await followingBtn.click();
-      await page.waitForTimeout(2000);
-
-      const dialog = page.locator('div[role="dialog"]').first();
-      await dialog.waitFor({ state: "visible", timeout: 15000 });
-
-      const unfollowBtn = dialog
-        .locator('div[role="button"]:has-text("Unfollow")')
-        .first();
-
-      await unfollowBtn.waitFor({ state: "visible", timeout: 15000 });
-      await unfollowBtn.click();
-
-      await page.waitForTimeout(3000);
-
-      console.log("✅ Instagram unfollowed successfully");
-      return {
-        success: true,
-        message: "User unfollowed successfully",
-      };
+      return await instagramUnfollow(page, targetUrl);
     }
 
-    /* ================= FACEBOOK (UNFRIEND) ================= */
     if (platform === "facebook") {
-      console.log("📘 Processing Facebook unfriend...");
-      
-      // Wait for Facebook profile to fully load
-      await page.waitForTimeout(6000);
-
-      // Close any popups that might be blocking
-      await page.locator('[aria-label="Close"]').click().catch(() => {});
-      await page.waitForTimeout(1000);
-
-      // STEP 1: Find and click "Friends" button
-      console.log("🔍 Looking for Friends button...");
-      
-      const friendsButtonSelectors = [
-        'div[aria-label="Friends"]',
-        'span:text-is("Friends")',
-        'div[role="button"]:has-text("Friends")',
-        '//div[@aria-label="Friends"]',
-        '//span[text()="Friends"]',
-        'div.x1i10hfl:has-text("Friends")',
-      ];
-
-      let friendsClicked = false;
-      let friendsBtn = null;
-
-      for (const selector of friendsButtonSelectors) {
-        try {
-          friendsBtn = page.locator(selector).first();
-          const isVisible = await friendsBtn.isVisible({ timeout: 5000 }).catch(() => false);
-          
-          if (isVisible) {
-            console.log(`✅ Friends button found using: ${selector}`);
-            
-            // Scroll into view
-            await friendsBtn.scrollIntoViewIfNeeded().catch(() => {});
-            await page.waitForTimeout(1000);
-            
-            // Click the Friends button
-            await friendsBtn.click({ timeout: 5000 });
-            console.log("✅ Friends button clicked");
-            friendsClicked = true;
-            break;
-          }
-        } catch (e) {
-          console.log(`⚠️ Selector failed: ${selector}`);
-          continue;
-        }
-      }
-
-      if (!friendsClicked) {
-        // Check if already not friends
-        const notFriends = await page.locator('div[aria-label="Add Friend"], div[aria-label="Add friend"]').first().isVisible().catch(() => false);
-        
-        if (notFriends) {
-          console.log("ℹ️ User is not a friend");
-          return {
-            success: true,
-            message: "User is not a friend, nothing to unfriend",
-          };
-        }
-        
-        throw new Error("Could not find Friends button");
-      }
-
-      await page.waitForTimeout(2000);
-
-      // STEP 2: Wait for dropdown menu to appear
-      console.log("🔍 Waiting for dropdown menu...");
-      
-      const menuSelectors = [
-        'div[role="menu"]',
-        'div[role="dialog"]',
-        'ul[role="menu"]',
-        'div.x1iyjqo2',
-      ];
-
-      let menuFound = false;
-      for (const selector of menuSelectors) {
-        try {
-          await page.locator(selector).first().waitFor({ 
-            state: "visible", 
-            timeout: 8000 
-          });
-          console.log(`✅ Menu found using: ${selector}`);
-          menuFound = true;
-          break;
-        } catch (e) {
-          continue;
-        }
-      }
-
-      if (!menuFound) {
-        throw new Error("Dropdown menu did not appear");
-      }
-
-      await page.waitForTimeout(1500);
-
-      // STEP 3: Click "Unfriend" in the menu
-      console.log("🔍 Looking for Unfriend option...");
-      
-      const unfriendSelectors = [
-        'div[role="menuitem"]:has-text("Unfriend")',
-        'span:text-is("Unfriend")',
-        'div:has-text("Unfriend")',
-        '//div[@role="menuitem"]//span[text()="Unfriend"]',
-        '//span[text()="Unfriend"]',
-        'div[role="menu"] span:has-text("Unfriend")',
-        'div[role="dialog"] span:has-text("Unfriend")',
-      ];
-
-      let unfriendClicked = false;
-      for (const selector of unfriendSelectors) {
-        try {
-          const unfriendBtn = page.locator(selector).first();
-          const isVisible = await unfriendBtn.isVisible({ timeout: 5000 }).catch(() => false);
-          
-          if (isVisible) {
-            console.log(`✅ Unfriend option found using: ${selector}`);
-            await unfriendBtn.click({ timeout: 5000 });
-            console.log("✅ Unfriend clicked");
-            unfriendClicked = true;
-            break;
-          }
-        } catch (e) {
-          console.log(`⚠️ Selector failed: ${selector}`);
-          continue;
-        }
-      }
-
-      if (!unfriendClicked) {
-        // Take screenshot for debugging
-        try {
-          await page.screenshot({ 
-            path: `facebook-unfriend-menu-${Date.now()}.png`,
-            fullPage: true 
-          });
-          console.log("📸 Menu screenshot saved");
-        } catch (screenshotError) {}
-        
-        throw new Error("Could not find Unfriend option in menu");
-      }
-
-      await page.waitForTimeout(2000);
-
-      // STEP 4: Confirm unfriend in the confirmation dialog
-      console.log("🔍 Looking for confirmation dialog...");
-      
-      // Wait for confirmation dialog
-      const confirmDialogSelectors = [
-        'div[role="dialog"]',
-        'div[aria-label*="Unfriend"]',
-        'div.x1n2onr6',
-      ];
-
-      let confirmDialogFound = false;
-      for (const selector of confirmDialogSelectors) {
-        try {
-          await page.locator(selector).first().waitFor({ 
-            state: "visible", 
-            timeout: 8000 
-          });
-          console.log(`✅ Confirmation dialog found using: ${selector}`);
-          confirmDialogFound = true;
-          break;
-        } catch (e) {
-          continue;
-        }
-      }
-
-      if (!confirmDialogFound) {
-        console.log("⚠️ No confirmation dialog found, checking if unfriend was successful...");
-      }
-
-      await page.waitForTimeout(1500);
-
-      // Click confirm button
-      console.log("🔍 Looking for Confirm button...");
-      
-      const confirmSelectors = [
-        'div[aria-label="Confirm"]',
-        'div[role="button"]:has-text("Confirm")',
-        'span:text-is("Confirm")',
-        '//div[@aria-label="Confirm"]',
-        '//span[text()="Confirm"]',
-        'div[role="dialog"] div[role="button"]:has-text("Confirm")',
-      ];
-
-      let confirmClicked = false;
-      for (const selector of confirmSelectors) {
-        try {
-          const confirmBtn = page.locator(selector).first();
-          const isVisible = await confirmBtn.isVisible({ timeout: 5000 }).catch(() => false);
-          
-          if (isVisible) {
-            console.log(`✅ Confirm button found using: ${selector}`);
-            await confirmBtn.click({ timeout: 5000 });
-            console.log("✅ Confirm clicked");
-            confirmClicked = true;
-            break;
-          }
-        } catch (e) {
-          console.log(`⚠️ Selector failed: ${selector}`);
-          continue;
-        }
-      }
-
-      if (!confirmClicked) {
-        console.log("⚠️ Could not find Confirm button, checking status...");
-      }
-
-      await page.waitForTimeout(3000);
-
-      // Verify unfriend was successful
-      const addFriendVisible = await page.locator('div[aria-label="Add Friend"], div[aria-label="Add friend"]').first().isVisible().catch(() => false);
-      
-      if (addFriendVisible) {
-        console.log("✅ Facebook unfriended successfully (verified)");
-        return {
-          success: true,
-          message: "User unfriended successfully",
-        };
-      } else {
-        console.log("✅ Facebook unfriend action completed");
-        return {
-          success: true,
-          message: "Unfriend action completed",
-        };
-      }
+      return await facebookUnfriend(page, targetUrl);
     }
 
-    /* ================= TWITTER/X ================= */
     if (platform === "twitter" || platform === "x") {
-      console.log("🐦 Processing Twitter/X unfollow...");
-      
-      const followingBtn = page.locator('[data-testid$="-unfollow"]').first();
-      
-      const isFollowing = await followingBtn.isVisible().catch(() => false);
-      if (!isFollowing) {
-        console.log("ℹ️ User is NOT followed");
-        return {
-          success: true,
-          message: "User was not followed, nothing to unfollow",
-        };
-      }
-
-      await followingBtn.click();
-      await page.waitForTimeout(2000);
-
-      // Confirm unfollow
-      const confirmBtn = page.locator('[data-testid="confirmationSheetConfirm"]').first();
-      await confirmBtn.waitFor({ state: "visible", timeout: 10000 });
-      await confirmBtn.click();
-
-      await page.waitForTimeout(3000);
-
-      console.log("✅ Twitter unfollowed successfully");
-      return {
-        success: true,
-        message: "User unfollowed successfully",
-      };
+      return await twitterUnfollow(page, targetUrl);
     }
 
-    /* ================= OTHER PLATFORMS ================= */
     return {
       success: false,
       message: `Unfollow not supported for ${platform}`,
     };
-
   } catch (error) {
     console.error("❌ Unfollow failed:", error.message);
-    
-    // Take screenshot for debugging
-    try {
-      await page.screenshot({ 
-        path: `${platform}-unfollow-error-${Date.now()}.png`,
-        fullPage: true 
-      });
-      console.log("📸 Error screenshot saved");
-    } catch (screenshotError) {
-      console.log("⚠️ Could not save screenshot");
-    }
 
-    return {
-      success: false,
-      message: error.message,
-    };
+    await page
+      .screenshot({
+        path: `${platform}-unfollow-error-${Date.now()}.png`,
+        fullPage: true,
+      })
+      .catch(() => {});
+
+    return { success: false, message: error.message };
   }
 }
 
@@ -1762,6 +1595,7 @@ async function unfollowUser(page, platform, targetUrl) {
 // }
 
 // Helper function to extract auth token
+
 function extractAuthToken(cookies, platform) {
   const tokenMap = {
     instagram: "sessionid",
