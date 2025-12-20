@@ -401,14 +401,15 @@ async function createPost(page, platform, task) {
 // INSTAGRAM POST
 // ==========================================
 async function createInstagramPost(page, postContent) {
-  console.log("📸 Creating Instagram post... new code");
-  
+  console.log("📸 Creating Instagram post...");
+
   try {
     // 1️⃣ Open Instagram
     await page.goto("https://www.instagram.com/", {
       waitUntil: "domcontentloaded",
       timeout: 60000,
     });
+
     await page.waitForTimeout(5000);
 
     // 2️⃣ Close popups
@@ -420,29 +421,30 @@ async function createInstagramPost(page, postContent) {
     const createButton = page.locator(
       'svg[aria-label="New post"], svg[aria-label="Create"]'
     ).first();
+
     await createButton.waitFor({ state: "visible", timeout: 20000 });
-    await createButton.click({ force: true });
-    console.log("✅ Create button clicked");
+    await createButton.click();
+    console.log("✅ Create clicked");
 
     await page.waitForTimeout(3000);
 
-    // 4️⃣ Get image path
-    if (!postContent.media_urls && !postContent.media_absolute_path) {
-      throw new Error("media_urls or media_absolute_path missing from task");
+    // 4️⃣ Click "Post" option if available
+    const postOption = page.locator('text="Post"').first();
+    if (await postOption.isVisible().catch(() => false)) {
+      await postOption.click();
+      console.log("✅ Post option clicked");
+      await page.waitForTimeout(2000);
     }
 
-    let absoluteImagePath = postContent.media_absolute_path;
-
-    if (!absoluteImagePath) {
-      absoluteImagePath = path.join(
-        "C:",
-        "wamp64",
-        "www",
-        "social-automation",
-        "public",
-        postContent.media_urls
-      );
-    }
+    // 5️⃣ Resolve image path
+    const absoluteImagePath = path.join(
+      "C:",
+      "wamp64",
+      "www",
+      "social-automation",
+      "public",
+      postContent.media_urls
+    );
 
     console.log("🔍 Looking for image at:", absoluteImagePath);
 
@@ -450,110 +452,197 @@ async function createInstagramPost(page, postContent) {
       throw new Error(`Image file not found: ${absoluteImagePath}`);
     }
 
-    console.log("✅ Image file found!");
+    console.log("✅ Image file found");
 
-    // 5️⃣ CLICK "SELECT FROM COMPUTER" BUTTON FIRST
-    console.log("⏳ Looking for 'Select from computer' button...");
+    // 6️⃣ Upload using hidden input[type=file]
+    const fileInput = page.locator('input[type="file"]');
+
+    await fileInput.waitFor({ state: "attached", timeout: 20000 });
+    await fileInput.setInputFiles(absoluteImagePath);
+
+    console.log("✅ Image uploaded");
+
+    // 7️⃣ Wait for preview and dialog to load
+    await page.waitForTimeout(4000);
     
-    // Wait for the dialog/modal to appear
+    // Wait for the crop dialog to be visible
+    await page.locator('[role="dialog"]').waitFor({ 
+      state: "visible", 
+      timeout: 15000 
+    });
+    
+    console.log("✅ Crop dialog loaded");
     await page.waitForTimeout(2000);
+
+    // 8️⃣ Click Next button (Crop/Edit step) - Using multiple strategies
+    console.log("🔘 Attempting to click Next button (crop step)...");
     
-    // Try different possible button texts
-    let selectButton = null;
-    
-    try {
-      // Try "Select from computer"
-      selectButton = page.locator('button:has-text("Select from computer")');
-      await selectButton.waitFor({ state: "visible", timeout: 5000 });
-      console.log("✅ Found 'Select from computer' button");
-    } catch (e) {
+    const nextButtonSelectors = [
+      'div[role="button"]:has-text("Next")',
+      'button:has-text("Next")',
+      '//div[@role="button" and contains(text(), "Next")]',
+      '[role="button"]:has-text("Next")',
+      'div:text-is("Next")',
+    ];
+
+    let nextClicked = false;
+    for (const selector of nextButtonSelectors) {
       try {
-        // Try "Select From Computer" (capital)
-        selectButton = page.locator('button:has-text("Select From Computer")');
-        await selectButton.waitFor({ state: "visible", timeout: 5000 });
-        console.log("✅ Found 'Select From Computer' button");
-      } catch (e2) {
-        // Try to find any button in the dialog
-        selectButton = page.locator('button').filter({ hasText: /select/i }).first();
-        console.log("✅ Found select button by filter");
+        const nextBtn = page.locator(selector).first();
+        await nextBtn.waitFor({ state: "visible", timeout: 5000 });
+        await nextBtn.click({ timeout: 5000 });
+        console.log(`✅ Next clicked using selector: ${selector}`);
+        nextClicked = true;
+        break;
+      } catch (e) {
+        console.log(`⚠️ Selector failed: ${selector}`);
+        continue;
       }
     }
 
-    // 6️⃣ NOW UPLOAD THE FILE
-    // Setup file chooser listener BEFORE clicking the button
-    const fileChooserPromise = page.waitForEvent('filechooser', { timeout: 10000 });
+    if (!nextClicked) {
+      // Last resort: click by position (top-right of dialog)
+      try {
+        await page.locator('text=Next').first().click({ force: true, timeout: 5000 });
+        console.log("✅ Next clicked using force click");
+        nextClicked = true;
+      } catch (e) {
+        throw new Error("Could not find or click Next button after image upload");
+      }
+    }
+
+    await page.waitForTimeout(4000);
+
+    // 9️⃣ Click Next button again (Filters step)
+    console.log("🔘 Attempting to click Next button (filters step)...");
     
-    // Click the button
-    await selectButton.click();
-    console.log("✅ Clicked select button");
+    nextClicked = false;
+    for (const selector of nextButtonSelectors) {
+      try {
+        const nextBtn = page.locator(selector).first();
+        await nextBtn.waitFor({ state: "visible", timeout: 5000 });
+        await nextBtn.click({ timeout: 5000 });
+        console.log(`✅ Next clicked (filters) using selector: ${selector}`);
+        nextClicked = true;
+        break;
+      } catch (e) {
+        continue;
+      }
+    }
 
-    // Wait for file chooser
-    const fileChooser = await fileChooserPromise;
-    await fileChooser.setFiles(absoluteImagePath);
-    console.log("✅ Image uploaded:", absoluteImagePath);
+    if (!nextClicked) {
+      try {
+        await page.locator('text=Next').first().click({ force: true, timeout: 5000 });
+        console.log("✅ Next clicked (filters) using force click");
+      } catch (e) {
+        throw new Error("Could not find or click Next button on filters page");
+      }
+    }
 
-    // 7️⃣ Wait for preview
-    console.log("⏳ Waiting for image preview...");
-    await page.waitForTimeout(8000);
+    await page.waitForTimeout(4000);
 
-    // 8️⃣ Click Next (1st)
-    console.log("⏳ Looking for Next button...");
-    await page.waitForSelector('button:has-text("Next")', { timeout: 10000 });
-    await page.locator('button:has-text("Next")').first().click();
-    console.log("✅ Clicked Next (1st)");
-    await page.waitForTimeout(3000);
-
-    // 9️⃣ Click Next (2nd)
-    await page.locator('button:has-text("Next")').first().click();
-    console.log("✅ Clicked Next (2nd)");
-    await page.waitForTimeout(3000);
-
-    // 🔟 Caption
-    const caption =
-      (postContent.content || "") +
-      "\n\n" +
-      (postContent.hashtags || "");
-
-    const captionBox = page.locator(
-      'textarea[aria-label*="caption"], textarea[placeholder*="caption"], div[contenteditable="true"]'
-    ).first();
+    // 🔟 Add Caption
+    console.log("📝 Adding caption...");
     
-    await captionBox.waitFor({ state: "visible", timeout: 10000 });
-    await captionBox.click();
-    await captionBox.fill(caption.trim());
-    console.log("✅ Caption added");
+    const caption = (postContent.content || "") + "\n\n" + (postContent.hashtags || "");
+
+    const captionSelectors = [
+      'div[aria-label="Write a caption..."]',
+      'textarea[aria-label*="caption"]',
+      'div[contenteditable="true"]',
+      '[aria-label*="Write a caption"]',
+    ];
+
+    let captionAdded = false;
+    for (const selector of captionSelectors) {
+      try {
+        const captionBox = page.locator(selector).first();
+        await captionBox.waitFor({ state: "visible", timeout: 5000 });
+        await captionBox.click();
+        await captionBox.fill(caption.trim());
+        console.log("✅ Caption added");
+        captionAdded = true;
+        break;
+      } catch (e) {
+        continue;
+      }
+    }
+
+    if (!captionAdded) {
+      console.log("⚠️ Could not add caption, continuing anyway...");
+    }
+
     await page.waitForTimeout(2000);
 
-    // 1️⃣1️⃣ Share
-    await page.locator('button:has-text("Share")').first().click();
-    console.log("✅ Share button clicked");
+    // 1️⃣1️⃣ Click Share button
+    console.log("📤 Clicking Share button...");
+    
+    const shareSelectors = [
+      'button:has-text("Share")',
+      'div[role="button"]:has-text("Share")',
+      '//div[@role="button" and contains(text(), "Share")]',
+    ];
+
+    let shareClicked = false;
+    for (const selector of shareSelectors) {
+      try {
+        const shareBtn = page.locator(selector).first();
+        await shareBtn.waitFor({ state: "visible", timeout: 5000 });
+        await shareBtn.click({ timeout: 5000 });
+        console.log("✅ Share button clicked");
+        shareClicked = true;
+        break;
+      } catch (e) {
+        continue;
+      }
+    }
+
+    if (!shareClicked) {
+      throw new Error("Could not find or click Share button");
+    }
+
+    // Wait for post to complete
     await page.waitForTimeout(12000);
+
+    // Check for success indicators
+    const successIndicators = [
+      'text=Your post has been shared',
+      'text=Post shared',
+      'img[alt*="Animated checkmark"]',
+    ];
+
+    let postSuccess = false;
+    for (const indicator of successIndicators) {
+      if (await page.locator(indicator).isVisible().catch(() => false)) {
+        postSuccess = true;
+        break;
+      }
+    }
 
     console.log("✅ Instagram post created successfully");
 
-    return {
-      success: true,
-      message: "Instagram post created successfully",
+    return { 
+      success: true, 
+      message: postSuccess ? "Post confirmed" : "Post likely successful"
     };
 
   } catch (error) {
     console.error("❌ Instagram post failed:", error.message);
-    console.error("Stack:", error.stack);
     
     // Take screenshot for debugging
     try {
       await page.screenshot({ 
-        path: `error_${Date.now()}.png`,
+        path: `instagram-error-${Date.now()}.png`,
         fullPage: true 
       });
       console.log("📸 Error screenshot saved");
-    } catch (e) {
-      console.log("Could not save screenshot");
+    } catch (screenshotError) {
+      console.log("⚠️ Could not save screenshot");
     }
-    
-    return {
-      success: false,
-      message: error.message,
+
+    return { 
+      success: false, 
+      message: error.message 
     };
   }
 }
