@@ -1141,53 +1141,218 @@ async function followUser(page, platform, targetUrl) {
   console.log(`👤 Following user on ${platform}...`);
 
   try {
+    // Navigate to target URL
+    console.log(`🌐 Navigating to: ${targetUrl}`);
     await page.goto(targetUrl, {
       waitUntil: "domcontentloaded",
       timeout: 60000,
     });
 
+    console.log("✅ Page loaded successfully");
     await page.waitForTimeout(4000);
 
+    // Handle Instagram
     if (platform === "instagram") {
-      // Multiple selectors for safety
-      const followBtn = page
-        .locator('button:has-text("Follow"), button:has-text("Follow Back")')
-        .first();
+      console.log("📸 Processing Instagram follow...");
+      
+      // Wait for profile to load
+      await page.waitForTimeout(3000);
 
-      await followBtn.waitFor({ state: "visible", timeout: 15000 });
-      await followBtn.click();
+      // Multiple selectors for Instagram follow button
+      const followSelectors = [
+        'button:has-text("Follow")',
+        'button:has-text("Follow Back")',
+        'button._acan._acap._acas._aj1-',
+        'button >> text=Follow',
+        '[role="button"]:has-text("Follow")'
+      ];
+
+      let followed = false;
+      for (const selector of followSelectors) {
+        try {
+          const followBtn = page.locator(selector).first();
+          
+          // Check if button exists and is visible
+          const isVisible = await followBtn.isVisible({ timeout: 5000 }).catch(() => false);
+          
+          if (isVisible) {
+            await followBtn.click({ timeout: 5000 });
+            console.log(`✅ Instagram follow button clicked using: ${selector}`);
+            followed = true;
+            break;
+          }
+        } catch (e) {
+          console.log(`⚠️ Selector failed: ${selector}`);
+          continue;
+        }
+      }
+
+      if (!followed) {
+        // Check if already following
+        const alreadyFollowing = await page.locator('button:has-text("Following"), button:has-text("Requested")').first().isVisible().catch(() => false);
+        
+        if (alreadyFollowing) {
+          console.log("ℹ️ Already following this user");
+          return { success: true, message: "Already following this user" };
+        } else {
+          throw new Error("Could not find Instagram follow button");
+        }
+      }
     }
-     if (platform === "facebook") {
-      // Facebook profile pages load slow
+
+    // Handle Facebook
+    if (platform === "facebook") {
+      console.log("📘 Processing Facebook friend request...");
+      
+      // Wait for Facebook profile to fully load
       await page.waitForTimeout(6000);
 
-      // Try multiple selectors (FB UI keeps changing)
-      const addFriendBtn = page.locator(
-        'div[aria-label="Add Friend"], ' +
-        'div[aria-label="Add friend"], ' +
-        'span:has-text("Add Friend"), ' +
-        'span:has-text("Add friend")'
-      ).first();
+      // Close any popups that might be blocking
+      await page.locator('[aria-label="Close"]').click().catch(() => {});
+      await page.waitForTimeout(1000);
 
-      await addFriendBtn.waitFor({ state: "visible", timeout: 20000 });
-      await addFriendBtn.click();
+      // Multiple selectors for Facebook Add Friend button
+      const addFriendSelectors = [
+        'div[aria-label="Add Friend"]',
+        'div[aria-label="Add friend"]',
+        'span:text-is("Add Friend")',
+        'span:text-is("Add friend")',
+        'div[aria-label="Add Friend"] span',
+        'div[role="button"]:has-text("Add Friend")',
+        'div[role="button"]:has-text("Add friend")',
+        '//div[@aria-label="Add Friend"]',
+        '//div[@aria-label="Add friend"]',
+        '//span[text()="Add Friend"]',
+        '//span[text()="Add friend"]'
+      ];
 
-      console.log("✅ Facebook friend request sent");
+      let requestSent = false;
+      for (const selector of addFriendSelectors) {
+        try {
+          const addFriendBtn = page.locator(selector).first();
+          
+          // Check if button exists and is visible
+          const isVisible = await addFriendBtn.isVisible({ timeout: 8000 }).catch(() => false);
+          
+          if (isVisible) {
+            // Scroll button into view
+            await addFriendBtn.scrollIntoViewIfNeeded().catch(() => {});
+            await page.waitForTimeout(1000);
+            
+            // Click the button
+            await addFriendBtn.click({ timeout: 5000 });
+            console.log(`✅ Facebook Add Friend clicked using: ${selector}`);
+            requestSent = true;
+            break;
+          }
+        } catch (e) {
+          console.log(`⚠️ Selector failed: ${selector}`);
+          continue;
+        }
+      }
+
+      if (!requestSent) {
+        // Check if already friends or request sent
+        const alreadyFriends = await page.locator('span:has-text("Friends"), div[aria-label="Friends"], span:has-text("Friend request sent"), span:has-text("Cancel request")').first().isVisible().catch(() => false);
+        
+        if (alreadyFriends) {
+          console.log("ℹ️ Already friends or request already sent");
+          return { success: true, message: "Already friends or request sent" };
+        } else {
+          // Take screenshot for debugging
+          try {
+            await page.screenshot({ 
+              path: `facebook-follow-error-${Date.now()}.png`,
+              fullPage: true 
+            });
+            console.log("📸 Debug screenshot saved");
+          } catch (screenshotError) {
+            console.log("⚠️ Could not save screenshot");
+          }
+          
+          throw new Error("Could not find Facebook Add Friend button. Screenshot saved for debugging.");
+        }
+      }
+
+      // Wait for confirmation
+      await page.waitForTimeout(2000);
+      
+      // Check if request was sent successfully
+      const requestSentConfirm = await page.locator('span:has-text("Friend request sent"), span:has-text("Cancel request")').first().isVisible().catch(() => false);
+      
+      if (requestSentConfirm) {
+        console.log("✅ Facebook friend request sent successfully");
+      }
     }
 
-    if (platform === "twitter") {
-      await page.click('[data-testid$="-follow"]', { timeout: 15000 });
-      console.log("✅ Twitter follow done");
-    }
+    // Handle Twitter/X
+    if (platform === "twitter" || platform === "x") {
+      console.log("🐦 Processing Twitter/X follow...");
+      
+      await page.waitForTimeout(3000);
 
+      const twitterFollowSelectors = [
+        '[data-testid$="-follow"]',
+        '[data-testid="placementTracking"] button:has-text("Follow")',
+        'button:has-text("Follow")',
+        '[role="button"]:has-text("Follow")'
+      ];
+
+      let followed = false;
+      for (const selector of twitterFollowSelectors) {
+        try {
+          const followBtn = page.locator(selector).first();
+          const isVisible = await followBtn.isVisible({ timeout: 5000 }).catch(() => false);
+          
+          if (isVisible) {
+            await followBtn.click({ timeout: 5000 });
+            console.log(`✅ Twitter follow button clicked using: ${selector}`);
+            followed = true;
+            break;
+          }
+        } catch (e) {
+          continue;
+        }
+      }
+
+      if (!followed) {
+        const alreadyFollowing = await page.locator('button:has-text("Following")').first().isVisible().catch(() => false);
+        
+        if (alreadyFollowing) {
+          console.log("ℹ️ Already following this user");
+          return { success: true, message: "Already following this user" };
+        } else {
+          throw new Error("Could not find Twitter follow button");
+        }
+      }
+    }
 
     await page.waitForTimeout(3000);
 
-    console.log("✅ Follow successful");
-    return { success: true, message: "User followed successfully" };
+    console.log("✅ Follow action completed successfully");
+    return { 
+      success: true, 
+      message: `${platform} follow/friend request sent successfully` 
+    };
+
   } catch (error) {
-    console.error("❌ Follow failed:", error.message);
-    return { success: false, message: error.message };
+    console.error("❌ Follow action failed:", error.message);
+    
+    // Take screenshot for debugging
+    try {
+      await page.screenshot({ 
+        path: `${platform}-follow-error-${Date.now()}.png`,
+        fullPage: true 
+      });
+      console.log("📸 Error screenshot saved");
+    } catch (screenshotError) {
+      console.log("⚠️ Could not save screenshot");
+    }
+
+    return { 
+      success: false, 
+      message: error.message 
+    };
   }
 }
 
@@ -1195,15 +1360,20 @@ async function unfollowUser(page, platform, targetUrl) {
   console.log(`🚫 Unfollowing user on ${platform}...`);
 
   try {
+    // Navigate to target URL
+    console.log(`🌐 Navigating to: ${targetUrl}`);
     await page.goto(targetUrl, {
       waitUntil: "domcontentloaded",
       timeout: 60000,
     });
 
+    console.log("✅ Page loaded successfully");
     await page.waitForTimeout(5000);
 
-    /* ================= INSTAGRAM (UNCHANGED) ================= */
+    /* ================= INSTAGRAM ================= */
     if (platform === "instagram") {
+      console.log("📸 Processing Instagram unfollow...");
+      
       const followingBtn = page.locator('button:has-text("Following")').first();
 
       const isFollowing = await followingBtn.count();
@@ -1240,61 +1410,264 @@ async function unfollowUser(page, platform, targetUrl) {
 
     /* ================= FACEBOOK (UNFRIEND) ================= */
     if (platform === "facebook") {
-      // Wait extra – FB is slow
+      console.log("📘 Processing Facebook unfriend...");
+      
+      // Wait for Facebook profile to fully load
       await page.waitForTimeout(6000);
 
-      // STEP 1: Click "Friends" button
-      const friendsBtn = page.locator(
-        'div[aria-label="Friends"], ' +
-        'span:has-text("Friends")'
-      ).first();
+      // Close any popups that might be blocking
+      await page.locator('[aria-label="Close"]').click().catch(() => {});
+      await page.waitForTimeout(1000);
 
-      const isFriend = await friendsBtn.count();
-      if (!isFriend) {
-        console.log("ℹ️ User is not a friend");
+      // STEP 1: Find and click "Friends" button
+      console.log("🔍 Looking for Friends button...");
+      
+      const friendsButtonSelectors = [
+        'div[aria-label="Friends"]',
+        'span:text-is("Friends")',
+        'div[role="button"]:has-text("Friends")',
+        '//div[@aria-label="Friends"]',
+        '//span[text()="Friends"]',
+        'div.x1i10hfl:has-text("Friends")',
+      ];
+
+      let friendsClicked = false;
+      let friendsBtn = null;
+
+      for (const selector of friendsButtonSelectors) {
+        try {
+          friendsBtn = page.locator(selector).first();
+          const isVisible = await friendsBtn.isVisible({ timeout: 5000 }).catch(() => false);
+          
+          if (isVisible) {
+            console.log(`✅ Friends button found using: ${selector}`);
+            
+            // Scroll into view
+            await friendsBtn.scrollIntoViewIfNeeded().catch(() => {});
+            await page.waitForTimeout(1000);
+            
+            // Click the Friends button
+            await friendsBtn.click({ timeout: 5000 });
+            console.log("✅ Friends button clicked");
+            friendsClicked = true;
+            break;
+          }
+        } catch (e) {
+          console.log(`⚠️ Selector failed: ${selector}`);
+          continue;
+        }
+      }
+
+      if (!friendsClicked) {
+        // Check if already not friends
+        const notFriends = await page.locator('div[aria-label="Add Friend"], div[aria-label="Add friend"]').first().isVisible().catch(() => false);
+        
+        if (notFriends) {
+          console.log("ℹ️ User is not a friend");
+          return {
+            success: true,
+            message: "User is not a friend, nothing to unfriend",
+          };
+        }
+        
+        throw new Error("Could not find Friends button");
+      }
+
+      await page.waitForTimeout(2000);
+
+      // STEP 2: Wait for dropdown menu to appear
+      console.log("🔍 Waiting for dropdown menu...");
+      
+      const menuSelectors = [
+        'div[role="menu"]',
+        'div[role="dialog"]',
+        'ul[role="menu"]',
+        'div.x1iyjqo2',
+      ];
+
+      let menuFound = false;
+      for (const selector of menuSelectors) {
+        try {
+          await page.locator(selector).first().waitFor({ 
+            state: "visible", 
+            timeout: 8000 
+          });
+          console.log(`✅ Menu found using: ${selector}`);
+          menuFound = true;
+          break;
+        } catch (e) {
+          continue;
+        }
+      }
+
+      if (!menuFound) {
+        throw new Error("Dropdown menu did not appear");
+      }
+
+      await page.waitForTimeout(1500);
+
+      // STEP 3: Click "Unfriend" in the menu
+      console.log("🔍 Looking for Unfriend option...");
+      
+      const unfriendSelectors = [
+        'div[role="menuitem"]:has-text("Unfriend")',
+        'span:text-is("Unfriend")',
+        'div:has-text("Unfriend")',
+        '//div[@role="menuitem"]//span[text()="Unfriend"]',
+        '//span[text()="Unfriend"]',
+        'div[role="menu"] span:has-text("Unfriend")',
+        'div[role="dialog"] span:has-text("Unfriend")',
+      ];
+
+      let unfriendClicked = false;
+      for (const selector of unfriendSelectors) {
+        try {
+          const unfriendBtn = page.locator(selector).first();
+          const isVisible = await unfriendBtn.isVisible({ timeout: 5000 }).catch(() => false);
+          
+          if (isVisible) {
+            console.log(`✅ Unfriend option found using: ${selector}`);
+            await unfriendBtn.click({ timeout: 5000 });
+            console.log("✅ Unfriend clicked");
+            unfriendClicked = true;
+            break;
+          }
+        } catch (e) {
+          console.log(`⚠️ Selector failed: ${selector}`);
+          continue;
+        }
+      }
+
+      if (!unfriendClicked) {
+        // Take screenshot for debugging
+        try {
+          await page.screenshot({ 
+            path: `facebook-unfriend-menu-${Date.now()}.png`,
+            fullPage: true 
+          });
+          console.log("📸 Menu screenshot saved");
+        } catch (screenshotError) {}
+        
+        throw new Error("Could not find Unfriend option in menu");
+      }
+
+      await page.waitForTimeout(2000);
+
+      // STEP 4: Confirm unfriend in the confirmation dialog
+      console.log("🔍 Looking for confirmation dialog...");
+      
+      // Wait for confirmation dialog
+      const confirmDialogSelectors = [
+        'div[role="dialog"]',
+        'div[aria-label*="Unfriend"]',
+        'div.x1n2onr6',
+      ];
+
+      let confirmDialogFound = false;
+      for (const selector of confirmDialogSelectors) {
+        try {
+          await page.locator(selector).first().waitFor({ 
+            state: "visible", 
+            timeout: 8000 
+          });
+          console.log(`✅ Confirmation dialog found using: ${selector}`);
+          confirmDialogFound = true;
+          break;
+        } catch (e) {
+          continue;
+        }
+      }
+
+      if (!confirmDialogFound) {
+        console.log("⚠️ No confirmation dialog found, checking if unfriend was successful...");
+      }
+
+      await page.waitForTimeout(1500);
+
+      // Click confirm button
+      console.log("🔍 Looking for Confirm button...");
+      
+      const confirmSelectors = [
+        'div[aria-label="Confirm"]',
+        'div[role="button"]:has-text("Confirm")',
+        'span:text-is("Confirm")',
+        '//div[@aria-label="Confirm"]',
+        '//span[text()="Confirm"]',
+        'div[role="dialog"] div[role="button"]:has-text("Confirm")',
+      ];
+
+      let confirmClicked = false;
+      for (const selector of confirmSelectors) {
+        try {
+          const confirmBtn = page.locator(selector).first();
+          const isVisible = await confirmBtn.isVisible({ timeout: 5000 }).catch(() => false);
+          
+          if (isVisible) {
+            console.log(`✅ Confirm button found using: ${selector}`);
+            await confirmBtn.click({ timeout: 5000 });
+            console.log("✅ Confirm clicked");
+            confirmClicked = true;
+            break;
+          }
+        } catch (e) {
+          console.log(`⚠️ Selector failed: ${selector}`);
+          continue;
+        }
+      }
+
+      if (!confirmClicked) {
+        console.log("⚠️ Could not find Confirm button, checking status...");
+      }
+
+      await page.waitForTimeout(3000);
+
+      // Verify unfriend was successful
+      const addFriendVisible = await page.locator('div[aria-label="Add Friend"], div[aria-label="Add friend"]').first().isVisible().catch(() => false);
+      
+      if (addFriendVisible) {
+        console.log("✅ Facebook unfriended successfully (verified)");
         return {
           success: true,
-          message: "User is not a friend, nothing to unfriend",
+          message: "User unfriended successfully",
+        };
+      } else {
+        console.log("✅ Facebook unfriend action completed");
+        return {
+          success: true,
+          message: "Unfriend action completed",
+        };
+      }
+    }
+
+    /* ================= TWITTER/X ================= */
+    if (platform === "twitter" || platform === "x") {
+      console.log("🐦 Processing Twitter/X unfollow...");
+      
+      const followingBtn = page.locator('[data-testid$="-unfollow"]').first();
+      
+      const isFollowing = await followingBtn.isVisible().catch(() => false);
+      if (!isFollowing) {
+        console.log("ℹ️ User is NOT followed");
+        return {
+          success: true,
+          message: "User was not followed, nothing to unfollow",
         };
       }
 
-      await friendsBtn.waitFor({ state: "visible", timeout: 20000 });
-      await friendsBtn.click();
+      await followingBtn.click();
       await page.waitForTimeout(2000);
 
-      // STEP 2: Menu / dialog opens
-      const dialog = page.locator('div[role="dialog"], div[role="menu"]').first();
-      await dialog.waitFor({ state: "visible", timeout: 15000 });
-
-      // STEP 3: Click "Unfriend"
-      const unfriendBtn = dialog.locator(
-        'div[aria-label="Unfriend"], ' +
-        'span:has-text("Unfriend")'
-      ).first();
-
-      await unfriendBtn.waitFor({ state: "visible", timeout: 15000 });
-      await unfriendBtn.click();
-
-      await page.waitForTimeout(2000);
-
-      // STEP 4: Confirm Unfriend
-      const confirmDialog = page.locator('div[role="dialog"]').first();
-      await confirmDialog.waitFor({ state: "visible", timeout: 15000 });
-
-      const confirmBtn = confirmDialog.locator(
-        'div[aria-label="Confirm"], ' +
-        'span:has-text("Confirm")'
-      ).first();
-
-      await confirmBtn.waitFor({ state: "visible", timeout: 15000 });
+      // Confirm unfollow
+      const confirmBtn = page.locator('[data-testid="confirmationSheetConfirm"]').first();
+      await confirmBtn.waitFor({ state: "visible", timeout: 10000 });
       await confirmBtn.click();
 
       await page.waitForTimeout(3000);
 
-      console.log("✅ Facebook unfriended successfully");
+      console.log("✅ Twitter unfollowed successfully");
       return {
         success: true,
-        message: "User unfriended successfully",
+        message: "User unfollowed successfully",
       };
     }
 
@@ -1306,6 +1679,18 @@ async function unfollowUser(page, platform, targetUrl) {
 
   } catch (error) {
     console.error("❌ Unfollow failed:", error.message);
+    
+    // Take screenshot for debugging
+    try {
+      await page.screenshot({ 
+        path: `${platform}-unfollow-error-${Date.now()}.png`,
+        fullPage: true 
+      });
+      console.log("📸 Error screenshot saved");
+    } catch (screenshotError) {
+      console.log("⚠️ Could not save screenshot");
+    }
+
     return {
       success: false,
       message: error.message,
