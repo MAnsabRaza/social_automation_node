@@ -1008,88 +1008,197 @@ async function instagramComment(page, targetUrl, commentText) {
 
   const cleanUrl = targetUrl.split("?")[0];
 
-  await page.goto(cleanUrl, {
-    waitUntil: "domcontentloaded",
-    timeout: 60000,
-  });
-
-  await page.waitForTimeout(5000);
-
-  // Check for session expired
-  if (
-    await page
-      .locator('input[name="username"]')
-      .isVisible({ timeout: 5000 })
-      .catch(() => false)
-  ) {
-    throw new Error("Instagram session expired (login required)");
-  }
-
-  // Scroll to load post
-  await page.evaluate(() => window.scrollTo(0, 300));
-  await page.waitForTimeout(2000);
-
-  // Find comment box
-  const commentSelectors = [
-    'textarea[placeholder*="Add a comment"]',
-    'textarea[aria-label*="Add a comment"]',
-    'div[role="textbox"][contenteditable="true"]',
-  ];
-
-  let commentBox = null;
-  for (const sel of commentSelectors) {
-    const box = page.locator(sel).first();
-    if (await box.isVisible({ timeout: 5000 }).catch(() => false)) {
-      commentBox = box;
-      break;
+  try {
+    // Navigate with error handling
+    try {
+      await page.goto(cleanUrl, {
+        waitUntil: "domcontentloaded",
+        timeout: 60000,
+      });
+    } catch (navError) {
+      if (!page.url().includes("instagram.com")) {
+        throw new Error("Failed to navigate to Instagram post");
+      }
+      console.log("⚠️ Navigation timeout but page loaded, continuing...");
     }
-  }
 
-  if (!commentBox) {
-    await page.screenshot({
-      path: `instagram-comment-error-${Date.now()}.png`,
-      fullPage: true,
+    await page.waitForTimeout(5000);
+
+    // Detect session expired
+    if (
+      await page
+        .locator('input[name="username"]')
+        .isVisible({ timeout: 5000 })
+        .catch(() => false)
+    ) {
+      throw new Error("Instagram session expired (login required)");
+    }
+
+    // Scroll to load the post content
+    await page.evaluate(() => {
+      window.scrollTo(0, 300);
     });
-    throw new Error("Instagram comment box not found");
-  }
+    await page.waitForTimeout(2000);
 
-  await commentBox.scrollIntoViewIfNeeded();
-  await commentBox.click({ force: true });
-  await commentBox.fill("");
-  await commentBox.type(commentText, { delay: 100 + Math.random() * 100 });
-  await page.waitForTimeout(1000);
+    // Try multiple selectors for the comment icon (Instagram has variations)
+    const commentIconSelectors = [
+      'svg[aria-label="Comment"]',
+      'svg[aria-label="Comment on this post"]',
+      'button[aria-label="Comment"]',
+      'span:has(svg[aria-label*="Comment"])',
+    ];
 
-  // Find Post button
-  const postBtnSelectors = [
-    'button:has-text("Post")',
-    'div[role="button"]:has-text("Post")',
-  ];
+    let commentIconClicked = false;
 
-  let postBtn = null;
-  for (const sel of postBtnSelectors) {
-    const btn = page.locator(sel).first();
-    if (await btn.isVisible({ timeout: 5000 }).catch(() => false)) {
-      postBtn = btn;
-      break;
+    for (const selector of commentIconSelectors) {
+      try {
+        const icon = page.locator(selector).first();
+        if (await icon.isVisible({ timeout: 5000 })) {
+          await icon.scrollIntoViewIfNeeded();
+          await icon.click({ force: true, timeout: 5000 });
+          console.log(`✅ Clicked comment icon using selector: ${selector}`);
+          commentIconClicked = true;
+          await page.waitForTimeout(2000);
+          break;
+        }
+      } catch (e) {
+        console.log(`⚠️ Failed to click with selector: ${selector}`);
+        continue;
+      }
     }
+
+    if (!commentIconClicked) {
+      console.log("⚠️ Comment icon not clicked, trying direct textbox access");
+    }
+
+    // Scroll down more to ensure comment box is loaded
+    await page.evaluate(() => {
+      window.scrollBy(0, 400);
+    });
+    await page.waitForTimeout(2000);
+
+    // Try multiple selectors for comment input box
+    const commentBoxSelectors = [
+      'textarea[placeholder*="Add a comment"]',
+      'textarea[aria-label*="Add a comment"]',
+      'div[role="textbox"][contenteditable="true"]',
+      'textarea[placeholder*="comment"]',
+      "form textarea",
+    ];
+
+    let commentBox = null;
+
+    for (const selector of commentBoxSelectors) {
+      try {
+        const box = page.locator(selector).first();
+        if (await box.isVisible({ timeout: 5000 })) {
+          commentBox = box;
+          console.log(`✅ Found comment box using selector: ${selector}`);
+          break;
+        }
+      } catch (e) {
+        console.log(`⚠️ Comment box not found with selector: ${selector}`);
+        continue;
+      }
+    }
+
+    if (!commentBox) {
+      // Last resort: take screenshot for debugging
+      await page.screenshot({
+        path: "instagram-comment-box-not-found.png",
+        fullPage: true,
+      });
+      throw new Error(
+        "Comment input box not found - check instagram-comment-box-not-found.png"
+      );
+    }
+
+    // Interact with comment box
+    await commentBox.scrollIntoViewIfNeeded();
+    await commentBox.click({ force: true });
+    await page.waitForTimeout(1000);
+
+    // Clear any existing text
+    await commentBox.fill("");
+    await page.waitForTimeout(500);
+
+    // Type comment with human-like delay
+    await commentBox.type(commentText, { delay: 100 + Math.random() * 100 });
+    await page.waitForTimeout(1000);
+
+    // Find and click the Post button with multiple selectors
+    const postButtonSelectors = [
+      'button:has-text("Post")',
+      'div[role="button"]:has-text("Post")',
+      'button[type="submit"]',
+      "button:has(div:text('Post'))",
+    ];
+
+    let postButton = null;
+
+    for (const selector of postButtonSelectors) {
+      try {
+        const btn = page.locator(selector).first();
+        if (await btn.isVisible({ timeout: 5000 })) {
+          postButton = btn;
+          console.log(`✅ Found post button using selector: ${selector}`);
+          break;
+        }
+      } catch (e) {
+        continue;
+      }
+    }
+
+    if (!postButton) {
+      throw new Error("Post button not found");
+    }
+
+    await postButton.scrollIntoViewIfNeeded();
+    await postButton.hover();
+    await page.waitForTimeout(500);
+    await postButton.click({ force: true });
+
+    // Wait for comment to be posted
+    await page.waitForTimeout(5000);
+
+    // Verify comment posted
+    const commentVisible = await page
+      .locator(`text=${commentText}`)
+      .first()
+      .isVisible({ timeout: 10000 })
+      .catch(() => false);
+
+    console.log(
+      commentVisible
+        ? "✅ Comment posted & confirmed"
+        : "✅ Comment posted (confirmation pending)"
+    );
+
+    return {
+      success: true,
+      message: commentVisible
+        ? "Comment posted successfully"
+        : "Comment posted (confirmation pending)",
+      post_url: cleanUrl,
+    };
+  } catch (error) {
+    console.error("❌ Instagram comment failed:", error.message);
+
+    // Debug screenshot with timestamp
+    const timestamp = Date.now();
+    await page
+      .screenshot({
+        path: `instagram-comment-error-${timestamp}.png`,
+        fullPage: true,
+      })
+      .catch(() => {});
+
+    return {
+      success: false,
+      message: error.message,
+      debug_screenshot: `instagram-comment-error-${timestamp}.png`,
+    };
   }
-
-  if (!postBtn) throw new Error("Instagram Post button not found");
-
-  await postBtn.click({ force: true });
-  await page.waitForTimeout(5000);
-
-  const posted = await page
-    .locator(`text=${commentText}`)
-    .first()
-    .isVisible()
-    .catch(() => false);
-  return {
-    success: true,
-    message: posted
-      ? "Instagram comment posted"
-      : "Instagram comment posted (confirmation pending)",
-  };
 }
 
 async function facebookComment(page, targetUrl, commentText) {
