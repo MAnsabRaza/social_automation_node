@@ -875,6 +875,9 @@ async function createPost(page, platform, task) {
     if (platform === "facebook") {
       return await createFacebookPost(page, task);
     }
+    if(platform === "twitter") {
+      return await createTwitterPost(page, task);
+    }
 
     return {
       success: false,
@@ -1488,40 +1491,450 @@ async function createFacebookPost(page, postContent) {
 // TWITTER POST
 // ==========================================
 async function createTwitterPost(page, postContent) {
-  console.log("🐦 Creating Twitter post...");
+  console.log("🐦 Creating Twitter/X post...");
 
   try {
+    // 1️⃣ Navigate to Twitter/X home
     await page.goto("https://twitter.com/home", {
       waitUntil: "domcontentloaded",
-      timeout: 30000,
+      timeout: 60000,
     });
-    await page.waitForTimeout(3000);
 
-    // Click tweet box
-    const tweetBox = await page
-      .locator('[data-testid="tweetTextarea_0"]')
-      .first();
+    console.log("⏳ Twitter loaded, waiting for content...");
+    await page.waitForTimeout(5000);
 
+    // Scroll to ensure compose box is visible
+    await page.evaluate(() => {
+      window.scrollTo(0, 0);
+    });
+    await page.waitForTimeout(2000);
+
+    console.log("🔍 Looking for tweet compose box...");
+
+    // 2️⃣ Find and click the tweet compose box
+    const tweetBoxSelectors = [
+      'div[data-testid="tweetTextarea_0"]',
+      'div[aria-label="Post text"]',
+      'div[aria-label="Tweet text"]',
+      'div[contenteditable="true"][role="textbox"]',
+      'div[data-testid="tweetTextarea_0_label"]',
+    ];
+
+    let tweetBox = null;
+    let foundSelector = null;
+
+    for (const selector of tweetBoxSelectors) {
+      try {
+        const box = page.locator(selector).first();
+        const isVisible = await box.isVisible({ timeout: 3000 }).catch(() => false);
+        
+        if (isVisible) {
+          tweetBox = box;
+          foundSelector = selector;
+          console.log(`✅ Found tweet box with selector: ${selector}`);
+          break;
+        }
+      } catch (e) {
+        continue;
+      }
+    }
+
+    // Try JavaScript method if not found
+    if (!tweetBox) {
+      console.log("🔍 Trying JavaScript method to find tweet box...");
+      
+      const foundViaJs = await page.evaluate(() => {
+        const editableDivs = Array.from(document.querySelectorAll('div[contenteditable="true"]'));
+        
+        for (const div of editableDivs) {
+          const testId = div.getAttribute('data-testid') || '';
+          const ariaLabel = div.getAttribute('aria-label') || '';
+          
+          if (
+            testId === 'tweetTextarea_0' ||
+            ariaLabel.includes('Post text') ||
+            ariaLabel.includes('Tweet text')
+          ) {
+            div.setAttribute('data-target-tweet-box', 'true');
+            return true;
+          }
+        }
+        
+        return false;
+      });
+
+      if (foundViaJs) {
+        tweetBox = page.locator('[data-target-tweet-box="true"]').first();
+        console.log("✅ Found tweet box via JavaScript");
+      }
+    }
+
+    if (!tweetBox) {
+      const screenshotPath = `twitter-no-compose-box-${Date.now()}.png`;
+      await page.screenshot({
+        path: screenshotPath,
+        fullPage: true,
+      });
+      console.log(`📸 Screenshot saved: ${screenshotPath}`);
+      
+      throw new Error("Twitter compose box not found - check screenshot");
+    }
+
+    // 3️⃣ Click to focus on the tweet box
+    console.log("📝 Clicking tweet compose box...");
+    await tweetBox.scrollIntoViewIfNeeded();
+    await page.waitForTimeout(1000);
+    
+    try {
+      await tweetBox.click({ timeout: 5000 });
+    } catch (e) {
+      await tweetBox.click({ force: true });
+    }
+    
+    await page.waitForTimeout(2000);
+
+    // 4️⃣ Prepare tweet content
     const content = postContent?.content || "";
     const hashtags = postContent?.hashtags || "";
     const fullText = `${content}\n\n${hashtags}`.trim();
 
-    await tweetBox.fill(fullText);
+    if (!fullText) {
+      throw new Error("Tweet content is empty");
+    }
+
+    console.log("✍️ Writing tweet content...");
+
+    // 5️⃣ Type the tweet content
+    let typingSuccessful = false;
+    
+    // Method 1: Use Playwright's fill and type
+    try {
+      await tweetBox.fill("");
+      await page.waitForTimeout(500);
+      await tweetBox.type(fullText, { delay: 80 + Math.random() * 120 });
+      typingSuccessful = true;
+      console.log("✅ Tweet content typed (Playwright method)");
+    } catch (e) {
+      console.log("⚠️ Playwright typing failed, trying keyboard method...");
+    }
+
+    // Method 2: Use keyboard.type
+    if (!typingSuccessful) {
+      try {
+        await page.keyboard.type(fullText, { delay: 100 });
+        typingSuccessful = true;
+        console.log("✅ Tweet content typed (keyboard method)");
+      } catch (e) {
+        console.log("⚠️ Keyboard typing failed, trying JavaScript method...");
+      }
+    }
+
+    // Method 3: JavaScript insertion
+    if (!typingSuccessful) {
+      try {
+        await page.evaluate((text) => {
+          const box = document.querySelector('[data-target-tweet-box="true"]') ||
+                      document.querySelector('div[data-testid="tweetTextarea_0"]') ||
+                      document.querySelector('div[contenteditable="true"][role="textbox"]');
+          
+          if (box) {
+            box.focus();
+            box.textContent = text;
+            
+            // Trigger input event
+            const inputEvent = new Event('input', { bubbles: true });
+            box.dispatchEvent(inputEvent);
+            
+            return true;
+          }
+          return false;
+        }, fullText);
+        
+        typingSuccessful = true;
+        console.log("✅ Tweet content inserted (JavaScript method)");
+      } catch (e) {
+        console.log("❌ All typing methods failed");
+      }
+    }
+
+    if (!typingSuccessful) {
+      throw new Error("Failed to type tweet content");
+    }
+
     await page.waitForTimeout(2000);
 
-    // Click Post/Tweet button
-    await page.click('[data-testid="tweetButtonInline"]');
-    await page.waitForTimeout(5000);
+    // 6️⃣ Check if there's an image to upload
+    const hasImage = postContent?.media_urls;
+    
+    if (hasImage) {
+      console.log("🖼️ Image detected, preparing to upload...");
 
-    console.log("✅ Twitter post created successfully");
-    return {
-      success: true,
-      message: "Twitter post created successfully",
-      post_url: page.url(),
-    };
+      // Build absolute path to image (adjust path as needed)
+      const path = require('path');
+      const fs = require('fs');
+      
+        const absoluteImagePath = path.join(
+      "C:",
+      "wamp64",
+      "www",
+      "social-automation",
+      "public",
+      postContent.media_urls
+    );
+
+      console.log("🔍 Looking for image at:", absoluteImagePath);
+
+      if (!fs.existsSync(absoluteImagePath)) {
+        throw new Error(`Image file not found: ${absoluteImagePath}`);
+      }
+
+      console.log("✅ Image file found");
+
+      // Find and click media upload button
+      const mediaButtonSelectors = [
+        'input[data-testid="fileInput"]',
+        'input[type="file"][accept*="image"]',
+        'button[data-testid="attachments"]',
+        'div[aria-label="Add photos or video"]',
+        'button[aria-label="Add photos or video"]',
+      ];
+
+      let imageUploaded = false;
+
+      // Try file input first
+      for (const selector of mediaButtonSelectors) {
+        try {
+          const elem = page.locator(selector).first();
+          
+          if (selector.includes('input')) {
+            // Direct file input
+            await elem.setInputFiles(absoluteImagePath);
+            console.log("✅ Image uploaded via file input");
+            imageUploaded = true;
+            break;
+          } else {
+            // Button that opens file dialog
+            if (await elem.isVisible({ timeout: 3000 })) {
+              // Click button to open file dialog
+              await elem.click({ timeout: 3000 });
+              await page.waitForTimeout(1000);
+              
+              // Then upload file
+              const fileInput = page.locator('input[type="file"]').first();
+              await fileInput.setInputFiles(absoluteImagePath);
+              console.log("✅ Image uploaded via button click");
+              imageUploaded = true;
+              break;
+            }
+          }
+        } catch (e) {
+          continue;
+        }
+      }
+
+      if (!imageUploaded) {
+        console.log("⚠️ Could not upload image");
+      } else {
+        // Wait for image to process
+        console.log("⏳ Waiting for image to process...");
+        await page.waitForTimeout(5000);
+      }
+    }
+
+    // 7️⃣ Find and click the Post button
+    console.log("🔍 Looking for Post button...");
+
+    const postButtonSelectors = [
+      'button[data-testid="tweetButton"]',
+      'button[data-testid="tweetButtonInline"]',
+      'div[data-testid="tweetButton"]',
+      'div[data-testid="tweetButtonInline"]',
+      'button:has-text("Post")',
+      'div[role="button"]:has-text("Post")',
+      'button:has-text("Tweet")',
+    ];
+
+    let postButton = null;
+    let postButtonFound = false;
+
+    for (const selector of postButtonSelectors) {
+      try {
+        const btn = page.locator(selector).first();
+        const isVisible = await btn.isVisible({ timeout: 3000 }).catch(() => false);
+        
+        if (isVisible) {
+          // Check if button is enabled
+          const isDisabled = await btn.getAttribute('disabled').catch(() => null);
+          const ariaDisabled = await btn.getAttribute('aria-disabled').catch(() => null);
+          
+          if (isDisabled === null && ariaDisabled !== 'true') {
+            postButton = btn;
+            postButtonFound = true;
+            console.log(`✅ Found Post button: ${selector}`);
+            break;
+          } else {
+            console.log(`⚠️ Post button found but disabled: ${selector}`);
+          }
+        }
+      } catch (e) {
+        continue;
+      }
+    }
+
+    // Try JavaScript method to find Post button
+    if (!postButton) {
+      console.log("🔍 Trying JavaScript method to find Post button...");
+      
+      const foundBtnViaJs = await page.evaluate(() => {
+        const buttons = Array.from(document.querySelectorAll('button, div[role="button"]'));
+        
+        for (const btn of buttons) {
+          const testId = btn.getAttribute('data-testid') || '';
+          const text = btn.textContent?.trim() || '';
+          const disabled = btn.disabled || btn.getAttribute('aria-disabled') === 'true';
+          
+          if (
+            (testId === 'tweetButton' || testId === 'tweetButtonInline') &&
+            !disabled
+          ) {
+            btn.setAttribute('data-target-post-btn', 'true');
+            return true;
+          }
+          
+          if ((text === 'Post' || text === 'Tweet') && !disabled) {
+            btn.setAttribute('data-target-post-btn', 'true');
+            return true;
+          }
+        }
+        
+        return false;
+      });
+
+      if (foundBtnViaJs) {
+        postButton = page.locator('[data-target-post-btn="true"]').first();
+        postButtonFound = true;
+        console.log("✅ Found Post button via JavaScript");
+      }
+    }
+
+    if (!postButton) {
+      const screenshotPath = `twitter-no-post-btn-${Date.now()}.png`;
+      await page.screenshot({
+        path: screenshotPath,
+        fullPage: true,
+      });
+      console.log(`📸 Screenshot saved: ${screenshotPath}`);
+      
+      throw new Error("Twitter Post button not found or is disabled - check screenshot");
+    }
+
+    // 8️⃣ Click the Post button
+    console.log("📤 Clicking Post button...");
+    
+    await postButton.scrollIntoViewIfNeeded();
+    await page.waitForTimeout(500);
+    
+    let postClicked = false;
+    
+    // Method 1: Normal click
+    try {
+      await postButton.click({ timeout: 5000 });
+      postClicked = true;
+      console.log("✅ Post button clicked (normal click)");
+    } catch (e) {
+      console.log("⚠️ Normal click failed, trying force click...");
+    }
+
+    // Method 2: Force click
+    if (!postClicked) {
+      try {
+        await postButton.click({ force: true });
+        postClicked = true;
+        console.log("✅ Post button clicked (force click)");
+      } catch (e) {
+        console.log("⚠️ Force click failed, trying JavaScript click...");
+      }
+    }
+
+    // Method 3: JavaScript click
+    if (!postClicked) {
+      try {
+        await page.evaluate(() => {
+          const btn = document.querySelector('[data-target-post-btn="true"]') ||
+                      document.querySelector('button[data-testid="tweetButton"]');
+          if (btn) {
+            btn.click();
+            return true;
+          }
+          return false;
+        });
+        postClicked = true;
+        console.log("✅ Post button clicked (JavaScript click)");
+      } catch (e) {
+        console.log("❌ All click methods failed");
+      }
+    }
+
+    if (!postClicked) {
+      throw new Error("Failed to click Post button");
+    }
+
+    // 9️⃣ Wait for tweet to be posted
+    console.log("⏳ Waiting for tweet to post...");
+    await page.waitForTimeout(6000);
+
+    // Verify tweet was posted by checking if compose box is empty/reset
+    const tweetPosted = await page.evaluate(() => {
+      const box = document.querySelector('div[data-testid="tweetTextarea_0"]') ||
+                  document.querySelector('div[contenteditable="true"][role="textbox"]');
+      
+      if (box) {
+        const text = box.textContent?.trim() || '';
+        return text === '' || text === 'What is happening?!';
+      }
+      
+      return true; // Assume posted if box not found
+    });
+
+    if (tweetPosted) {
+      console.log("✅ Twitter post created successfully");
+      return {
+        success: true,
+        message: "Twitter post created successfully",
+        verified: true,
+        post_url: page.url(),
+      };
+    } else {
+      console.log("✅ Twitter post likely created (verification pending)");
+      return {
+        success: true,
+        message: "Twitter post created (verification pending)",
+        verified: false,
+        post_url: page.url(),
+        note: "Post was submitted but verification pending. Check your profile manually.",
+      };
+    }
+
   } catch (error) {
     console.error("❌ Twitter post failed:", error.message);
-    return { success: false, message: error.message };
+
+    // Debug screenshot
+    const timestamp = Date.now();
+    try {
+      await page.screenshot({
+        path: `twitter-post-error-${timestamp}.png`,
+        fullPage: true,
+      });
+      console.log(`📸 Error screenshot saved: twitter-post-error-${timestamp}.png`);
+    } catch (screenshotError) {
+      console.log("⚠️ Could not save error screenshot");
+    }
+
+    return {
+      success: false,
+      message: error.message,
+      debug_screenshot: `twitter-post-error-${timestamp}.png`,
+    };
   }
 }
 
@@ -1777,9 +2190,6 @@ async function instagramLike(page, targetUrl) {
   }
 }
 
-// ==========================================
-// FACEBOOK LIKE FUNCTION
-// ==========================================
 async function facebookLike(page, targetUrl) {
   console.log("👍 Liking Facebook post...");
 
@@ -2039,10 +2449,245 @@ async function facebookLike(page, targetUrl) {
     };
   }
 }
+async function twitterLike(page, targetUrl) {
+  console.log("❤️ Liking Twitter/X post...");
 
-// ==========================================
-// MAIN LIKE POST FUNCTION
-// ==========================================
+  try {
+    if (!targetUrl) throw new Error("Target URL missing");
+
+    await page.goto(targetUrl, {
+      waitUntil: "domcontentloaded",
+      timeout: 60000,
+    });
+
+    console.log("⏳ Tweet loaded, waiting for content...");
+    await page.waitForTimeout(6000);
+
+    // Scroll to ensure tweet actions are loaded
+    await page.evaluate(() => {
+      window.scrollBy(0, 300);
+    });
+    await page.waitForTimeout(2000);
+
+    console.log("🔍 Checking if already liked...");
+
+    // Check if already liked and find like button
+    const likeStatus = await page.evaluate(() => {
+      const buttons = Array.from(document.querySelectorAll('button, div[role="button"]'));
+      
+      for (const btn of buttons) {
+        const ariaLabel = btn.getAttribute('aria-label') || '';
+        const testId = btn.getAttribute('data-testid') || '';
+        
+        // Check for "Liked" state (already liked - filled heart)
+        if (
+          ariaLabel.toLowerCase().includes('liked') ||
+          testId === 'unlike' ||
+          testId.includes('unlike')
+        ) {
+          return { isLiked: true, foundButton: false };
+        }
+      }
+
+      // Now look for Like button (empty heart)
+      for (const btn of buttons) {
+        const ariaLabel = btn.getAttribute('aria-label') || '';
+        const testId = btn.getAttribute('data-testid') || '';
+        
+        // Check for "Like" button (not "Liked")
+        if (
+          (ariaLabel.toLowerCase() === 'like' && !ariaLabel.toLowerCase().includes('liked')) ||
+          testId === 'like' ||
+          (testId.includes('like') && !testId.includes('unlike'))
+        ) {
+          // Mark this button for clicking
+          btn.setAttribute('data-target-like-btn', 'true');
+          return { isLiked: false, foundButton: true };
+        }
+      }
+      
+      return { isLiked: false, foundButton: false };
+    });
+
+    if (likeStatus.isLiked) {
+      console.log("💗 Tweet already liked");
+      return {
+        success: true,
+        message: "Tweet already liked",
+        alreadyLiked: true,
+        tweet_url: targetUrl,
+      };
+    }
+
+    if (!likeStatus.foundButton) {
+      console.log("❌ Like button not found on page");
+      
+      const screenshotPath = `twitter-no-like-btn-${Date.now()}.png`;
+      await page.screenshot({
+        path: screenshotPath,
+        fullPage: true,
+      });
+      console.log(`📸 Screenshot saved: ${screenshotPath}`);
+      
+      throw new Error("Twitter Like button not found - check screenshot");
+    }
+
+    console.log("🔍 Like button found, attempting to click...");
+
+    // Get the marked button
+    const likeButton = page.locator('[data-target-like-btn="true"]').first();
+
+    // Scroll button into view
+    await likeButton.scrollIntoViewIfNeeded();
+    await page.waitForTimeout(800);
+
+    // Try to click with multiple strategies
+    let clickSuccessful = false;
+    
+    // Strategy 1: Normal click
+    try {
+      await likeButton.hover({ timeout: 3000 });
+      await page.waitForTimeout(400 + Math.random() * 300);
+      await likeButton.click({ timeout: 5000, delay: 100 });
+      clickSuccessful = true;
+      console.log("✅ Clicked Like button (normal click)");
+    } catch (e) {
+      console.log("⚠️ Normal click failed, trying force click...");
+    }
+
+    // Strategy 2: Force click
+    if (!clickSuccessful) {
+      try {
+        await likeButton.click({ force: true, timeout: 5000 });
+        clickSuccessful = true;
+        console.log("✅ Clicked Like button (force click)");
+      } catch (e) {
+        console.log("⚠️ Force click failed, trying JavaScript click...");
+      }
+    }
+
+    // Strategy 3: JavaScript click
+    if (!clickSuccessful) {
+      try {
+        const jsClicked = await page.evaluate(() => {
+          const btn = document.querySelector('[data-target-like-btn="true"]');
+          if (btn) {
+            btn.click();
+            return true;
+          }
+          return false;
+        });
+        
+        if (jsClicked) {
+          clickSuccessful = true;
+          console.log("✅ Clicked Like button (JavaScript click)");
+        }
+      } catch (e) {
+        console.log("❌ All click strategies failed");
+      }
+    }
+
+    if (!clickSuccessful) {
+      throw new Error("Failed to click Like button after multiple attempts");
+    }
+
+    // Wait for the like action to register
+    console.log("⏳ Waiting for like action to complete...");
+    await page.waitForTimeout(3000);
+
+    // Verify like was successful
+    console.log("🔍 Verifying like status...");
+    
+    const likeConfirmed = await page.evaluate(() => {
+      const buttons = Array.from(document.querySelectorAll('button, div[role="button"]'));
+
+      for (const btn of buttons) {
+        const ariaLabel = btn.getAttribute('aria-label') || '';
+        const testId = btn.getAttribute('data-testid') || '';
+
+        // Check if button now shows "Liked" (filled heart)
+        if (
+          ariaLabel.toLowerCase().includes('liked') ||
+          testId === 'unlike' ||
+          testId.includes('unlike')
+        ) {
+          return true;
+        }
+      }
+
+      // Alternative check: look for filled heart SVG
+      const svgs = document.querySelectorAll('svg');
+      for (const svg of svgs) {
+        const paths = svg.querySelectorAll('path');
+        for (const path of paths) {
+          const d = path.getAttribute('d') || '';
+          // Twitter's filled heart path
+          if (d.includes('M20.884 13.19c-1.351 2.48-4.001 5.12-8.379 7.67') || 
+              d.includes('M12 21.638h-.014C9.403')) {
+            const fill = path.getAttribute('fill') || '';
+            // Check if it's filled (red/pink color)
+            if (fill && (fill.includes('rgb(249') || fill.includes('#F91880') || fill === 'currentColor')) {
+              return true;
+            }
+          }
+        }
+      }
+
+      return false;
+    });
+
+    if (likeConfirmed) {
+      console.log("❤️ Twitter like successful and confirmed");
+      return {
+        success: true,
+        message: "Tweet liked successfully",
+        confirmed: true,
+        tweet_url: targetUrl,
+      };
+    } else {
+      console.warn("⚠️ Like button was clicked but confirmation not detected");
+      
+      // Take a screenshot for debugging
+      const screenshotPath = `twitter-like-unconfirmed-${Date.now()}.png`;
+      await page.screenshot({
+        path: screenshotPath,
+        fullPage: true,
+      });
+      console.log(`📸 Screenshot saved: ${screenshotPath}`);
+      
+      return {
+        success: true,
+        message: "Like button clicked (awaiting confirmation)",
+        confirmed: false,
+        tweet_url: targetUrl,
+        note: "Button was clicked but 'Liked' status not yet detected. May need a few seconds.",
+      };
+    }
+
+  } catch (error) {
+    console.error("❌ Twitter like failed:", error.message);
+
+    // Debug screenshot
+    const timestamp = Date.now();
+    try {
+      await page.screenshot({
+        path: `twitter-like-error-${timestamp}.png`,
+        fullPage: true,
+      });
+      console.log(`📸 Error screenshot saved: twitter-like-error-${timestamp}.png`);
+    } catch (screenshotError) {
+      console.log("⚠️ Could not save error screenshot");
+    }
+
+    return {
+      success: false,
+      message: error.message,
+      debug_screenshot: `twitter-like-error-${timestamp}.png`,
+      tweet_url: targetUrl,
+    };
+  }
+}
+
 async function likePost(page, platform, targetUrl) {
   console.log(`❤️ Liking post on ${platform}...`);
 
@@ -2056,11 +2701,9 @@ async function likePost(page, platform, targetUrl) {
     if (platform === "facebook") {
       return await facebookLike(page, targetUrl);
     }
-
-    // Add more platforms here as needed
-    // if (platform === "twitter") {
-    //   return await twitterLike(page, targetUrl);
-    // }
+     if (platform === "twitter") {
+      return await twitterLike(page, targetUrl);
+    }
 
     return {
       success: false,
