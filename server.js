@@ -701,7 +701,11 @@ async function createPost(page, platform, task) {
 
   try {
     if (platform === "instagram") {
-      return await createInstagramPost(page, task); // ✅ PASS task
+      return await createInstagramPost(page, task);
+    }
+
+    if (platform === "facebook") {
+      return await createFacebookPost(page, task);
     }
 
     return {
@@ -986,47 +990,329 @@ async function createFacebookPost(page, postContent) {
   console.log("📘 Creating Facebook post...");
 
   try {
+    // 1️⃣ Navigate to Facebook
     await page.goto("https://www.facebook.com/", {
       waitUntil: "domcontentloaded",
-      timeout: 30000,
+      timeout: 60000,
     });
+
+    console.log("⏳ Facebook loaded, waiting for content...");
+    await page.waitForTimeout(5000);
+
+    // Close any popups
+    try {
+      await page.locator('[aria-label="Close"]').first().click({ timeout: 2000 });
+      await page.waitForTimeout(1000);
+    } catch (e) {
+      // No popup to close
+    }
+
+    // 2️⃣ Click "What's on your mind?" or "Create a post"
+    console.log("🔘 Looking for create post button...");
+
+    const createPostSelectors = [
+      '[aria-label="Create a post"]',
+      'div[role="button"]:has-text("What\'s on your mind")',
+      'span:has-text("What\'s on your mind")',
+      'div[role="button"][aria-label="Create a post"]',
+      '[data-pagelet="FeedComposer"]',
+    ];
+
+    let createClicked = false;
+    for (const selector of createPostSelectors) {
+      try {
+        const btn = page.locator(selector).first();
+        if (await btn.isVisible({ timeout: 3000 })) {
+          await btn.click({ timeout: 5000 });
+          console.log(`✅ Clicked create post: ${selector}`);
+          createClicked = true;
+          break;
+        }
+      } catch (e) {
+        continue;
+      }
+    }
+
+    if (!createClicked) {
+      throw new Error("Could not find 'Create a post' button");
+    }
+
     await page.waitForTimeout(3000);
 
-    // Click "What's on your mind?" box
-    await page.click('[aria-label="Create a post"]').catch(() => {
-      return page.click('div[role="button"]:has-text("What\'s on your mind")');
-    });
+    // 3️⃣ Wait for post composer dialog to open
+    console.log("⏳ Waiting for post composer...");
+    
+    const composerSelectors = [
+      'div[role="dialog"]',
+      '[aria-label="Create a post"]',
+      'form[method="POST"]',
+    ];
+
+    let composerFound = false;
+    for (const selector of composerSelectors) {
+      try {
+        await page.locator(selector).first().waitFor({ 
+          state: "visible", 
+          timeout: 5000 
+        });
+        composerFound = true;
+        console.log("✅ Post composer opened");
+        break;
+      } catch (e) {
+        continue;
+      }
+    }
+
+    if (!composerFound) {
+      throw new Error("Post composer dialog did not open");
+    }
 
     await page.waitForTimeout(2000);
 
-    // Type content
+    // 4️⃣ Check if there's an image to upload
+    const hasImage = postContent?.media_urls;
+    
+    if (hasImage) {
+      console.log("🖼️ Image detected, preparing to upload...");
+
+      // Build absolute path to image
+      const absoluteImagePath = path.join(
+        "C:",
+        "wamp64",
+        "www",
+        "social-automation",
+        "public",
+        postContent.media_urls
+      );
+
+      console.log("🔍 Looking for image at:", absoluteImagePath);
+
+      if (!fs.existsSync(absoluteImagePath)) {
+        throw new Error(`Image file not found: ${absoluteImagePath}`);
+      }
+
+      console.log("✅ Image file found");
+
+      // Find and click "Photo/video" button
+      const photoButtonSelectors = [
+        '[aria-label="Photo/video"]',
+        'div[aria-label="Photo/video"]',
+        'span:has-text("Photo/video")',
+        'div[role="button"]:has-text("Photo/video")',
+        '[data-testid="media-sprout"]',
+      ];
+
+      let photoClicked = false;
+      for (const selector of photoButtonSelectors) {
+        try {
+          const photoBtn = page.locator(selector).first();
+          if (await photoBtn.isVisible({ timeout: 3000 })) {
+            await photoBtn.click({ timeout: 5000 });
+            console.log(`✅ Clicked Photo/video button: ${selector}`);
+            photoClicked = true;
+            break;
+          }
+        } catch (e) {
+          continue;
+        }
+      }
+
+      if (!photoClicked) {
+        console.log("⚠️ Could not click Photo/video button, trying direct file input...");
+      }
+
+      await page.waitForTimeout(2000);
+
+      // Upload image using file input
+      console.log("📤 Uploading image...");
+
+      const fileInputSelectors = [
+        'input[type="file"][accept*="image"]',
+        'input[type="file"]',
+        'input[accept*="image"]',
+      ];
+
+      let fileUploaded = false;
+      for (const selector of fileInputSelectors) {
+        try {
+          const fileInput = page.locator(selector).first();
+          await fileInput.waitFor({ state: "attached", timeout: 5000 });
+          await fileInput.setInputFiles(absoluteImagePath);
+          console.log("✅ Image uploaded successfully");
+          fileUploaded = true;
+          break;
+        } catch (e) {
+          continue;
+        }
+      }
+
+      if (!fileUploaded) {
+        throw new Error("Could not upload image - file input not found");
+      }
+
+      // Wait for image to process
+      console.log("⏳ Waiting for image to process...");
+      await page.waitForTimeout(5000);
+
+      // Check if image preview is visible
+      const imagePreviewVisible = await page
+        .locator('img[src*="blob:"], img[src*="scontent"]')
+        .first()
+        .isVisible({ timeout: 10000 })
+        .catch(() => false);
+
+      if (imagePreviewVisible) {
+        console.log("✅ Image preview loaded");
+      } else {
+        console.log("⚠️ Image preview not detected, but continuing...");
+      }
+    }
+
+    // 5️⃣ Type content and hashtags
+    console.log("📝 Adding post text...");
+
     const content = postContent?.content || "";
     const hashtags = postContent?.hashtags || "";
     const fullText = `${content}\n\n${hashtags}`.trim();
 
-    const textBox = await page
-      .locator('[aria-label="What\'s on your mind?"]')
-      .first();
-    await textBox.fill(fullText);
+    if (fullText) {
+      const textBoxSelectors = [
+        'div[aria-label="What\'s on your mind?"]',
+        'div[aria-label="What\'s on your mind, "]', // Facebook adds username
+        'div[contenteditable="true"][role="textbox"]',
+        'div[contenteditable="true"][data-lexical-editor="true"]',
+        'div[aria-placeholder*="mind"]',
+        'p[data-text="true"]',
+      ];
 
-    await page.waitForTimeout(2000);
+      let textAdded = false;
+      for (const selector of textBoxSelectors) {
+        try {
+          const textBox = page.locator(selector).first();
+          if (await textBox.isVisible({ timeout: 3000 })) {
+            await textBox.click({ timeout: 3000 });
+            await page.waitForTimeout(1000);
+            
+            // Type text with human-like delay
+            await textBox.type(fullText, { delay: 50 + Math.random() * 100 });
+            console.log("✅ Post text added");
+            textAdded = true;
+            break;
+          }
+        } catch (e) {
+          continue;
+        }
+      }
 
-    // Click Post button
-    await page.click('div[aria-label="Post"]').catch(() => {
-      return page.click('div[role="button"]:has-text("Post")');
-    });
+      if (!textAdded) {
+        console.log("⚠️ Could not add text to post");
+      }
 
-    await page.waitForTimeout(5000);
+      await page.waitForTimeout(2000);
+    } else {
+      console.log("ℹ️ No text content provided");
+    }
 
-    console.log("✅ Facebook post created successfully");
+    // 6️⃣ Click Post button
+    console.log("📤 Looking for Post button...");
+
+    const postButtonSelectors = [
+      'div[aria-label="Post"]',
+      'div[role="button"][aria-label="Post"]',
+      'span:text-is("Post")',
+      'div[role="button"]:has-text("Post")',
+      'button:has-text("Post")',
+    ];
+
+    let postClicked = false;
+    for (const selector of postButtonSelectors) {
+      try {
+        const postBtn = page.locator(selector).first();
+        if (await postBtn.isVisible({ timeout: 5000 })) {
+          // Check if button is enabled (not disabled/grayed out)
+          const isEnabled = await postBtn.evaluate(el => {
+            return !el.hasAttribute('aria-disabled') || 
+                   el.getAttribute('aria-disabled') === 'false';
+          });
+
+          if (!isEnabled) {
+            console.log("⚠️ Post button is disabled, waiting...");
+            await page.waitForTimeout(3000);
+          }
+
+          await postBtn.scrollIntoViewIfNeeded();
+          await page.waitForTimeout(500);
+          
+          try {
+            await postBtn.click({ timeout: 5000 });
+          } catch (e) {
+            console.log("⚠️ Regular click failed, trying force click...");
+            await postBtn.click({ force: true });
+          }
+
+          console.log("✅ Post button clicked");
+          postClicked = true;
+          break;
+        }
+      } catch (e) {
+        continue;
+      }
+    }
+
+    if (!postClicked) {
+      // Take screenshot for debugging
+      await page.screenshot({
+        path: `facebook-post-button-error-${Date.now()}.png`,
+        fullPage: true,
+      });
+      throw new Error("Could not find or click Post button - check screenshot");
+    }
+
+    // 7️⃣ Wait for post to be published
+    console.log("⏳ Waiting for post to publish...");
+    await page.waitForTimeout(8000);
+
+    // Check if dialog closed (indicates success)
+    const dialogClosed = await page
+      .locator('div[role="dialog"]')
+      .first()
+      .isVisible({ timeout: 5000 })
+      .catch(() => false);
+
+    const postSuccess = !dialogClosed; // If dialog is gone, post succeeded
+
+    if (postSuccess) {
+      console.log("✅ Facebook post created successfully");
+    } else {
+      console.log("⚠️ Post status unclear, but likely successful");
+    }
+
     return {
       success: true,
-      message: "Facebook post created successfully",
+      message: postSuccess 
+        ? "Facebook post created successfully" 
+        : "Facebook post likely created (confirmation pending)",
       post_url: page.url(),
     };
+
   } catch (error) {
     console.error("❌ Facebook post failed:", error.message);
-    return { success: false, message: error.message };
+
+    // Take debug screenshot
+    try {
+      await page.screenshot({
+        path: `facebook-post-error-${Date.now()}.png`,
+        fullPage: true,
+      });
+      console.log("📸 Error screenshot saved");
+    } catch (screenshotError) {
+      console.log("⚠️ Could not save screenshot");
+    }
+
+    return {
+      success: false,
+      message: error.message,
+    };
   }
 }
 
