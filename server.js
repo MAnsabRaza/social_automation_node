@@ -409,7 +409,7 @@ app.post("/login-social", async (req, res) => {
 
     // Launch new browser
     const browser = await chromium.launch({
-      headless: false,  // Changed to false so you can see what's happening
+      headless: false,
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
@@ -462,16 +462,181 @@ app.post("/login-social", async (req, res) => {
         await page.fill("#email", username);
         await page.fill("#pass", password);
         await page.click('button[name="login"]');
+        await page.waitForTimeout(5000);
         break;
 
       case "twitter":
-        await page.waitForSelector('input[name="text"]', { timeout: 20000 });
-        await page.fill('input[name="text"]', username);
-        await page.keyboard.press("Enter");
-
+        console.log("🐦 Starting Twitter login flow...");
+        
+        // Wait for initial input field
         await page.waitForTimeout(3000);
-        await page.fill('input[name="password"]', password);
-        await page.keyboard.press("Enter");
+        
+        // Step 1: Enter username/email/phone
+        console.log("📧 Entering username/email...");
+        const usernameSelectors = [
+          'input[name="text"]',
+          'input[autocomplete="username"]',
+          'input[type="text"]',
+        ];
+
+        let usernameEntered = false;
+        for (const selector of usernameSelectors) {
+          try {
+            const input = page.locator(selector).first();
+            if (await input.isVisible({ timeout: 5000 })) {
+              await input.click();
+              await input.fill(username);
+              console.log("✅ Username entered");
+              usernameEntered = true;
+              break;
+            }
+          } catch (e) {
+            continue;
+          }
+        }
+
+        if (!usernameEntered) {
+          throw new Error("Could not find Twitter username input field");
+        }
+
+        // Click "Next" button
+        await page.waitForTimeout(1500);
+        
+        const nextButtonSelectors = [
+          'div[role="button"]:has-text("Next")',
+          'button:has-text("Next")',
+          'span:has-text("Next")',
+        ];
+
+        let nextClicked = false;
+        for (const selector of nextButtonSelectors) {
+          try {
+            const btn = page.locator(selector).first();
+            if (await btn.isVisible({ timeout: 3000 })) {
+              await btn.click();
+              console.log("✅ Clicked Next button");
+              nextClicked = true;
+              break;
+            }
+          } catch (e) {
+            continue;
+          }
+        }
+
+        if (!nextClicked) {
+          console.log("⚠️ Next button not found, trying Enter key...");
+          await page.keyboard.press("Enter");
+        }
+
+        await page.waitForTimeout(4000);
+
+        // Step 2: Check for unusual activity / verification
+        console.log("🔍 Checking for verification screen...");
+        
+        const verificationInput = page.locator('input[data-testid="ocfEnterTextTextInput"]');
+        const isVerificationVisible = await verificationInput.isVisible({ timeout: 5000 }).catch(() => false);
+
+        if (isVerificationVisible) {
+          console.log("📱 Unusual activity detected - entering username again...");
+          await verificationInput.click();
+          await verificationInput.fill(username);
+          await page.keyboard.press("Enter");
+          await page.waitForTimeout(4000);
+        }
+
+        // Step 3: Enter password
+        console.log("🔐 Entering password...");
+        
+        const passwordSelectors = [
+          'input[name="password"]',
+          'input[type="password"]',
+          'input[autocomplete="current-password"]',
+        ];
+
+        let passwordEntered = false;
+        for (const selector of passwordSelectors) {
+          try {
+            const input = page.locator(selector).first();
+            if (await input.isVisible({ timeout: 8000 })) {
+              await input.click();
+              await page.waitForTimeout(500);
+              await input.fill(password);
+              console.log("✅ Password entered");
+              passwordEntered = true;
+              break;
+            }
+          } catch (e) {
+            continue;
+          }
+        }
+
+        if (!passwordEntered) {
+          // Take screenshot for debugging
+          await page.screenshot({ 
+            path: `twitter-password-screen-${Date.now()}.png`, 
+            fullPage: true 
+          });
+          throw new Error("Could not find Twitter password input field - check screenshot");
+        }
+
+        // Click "Log in" button
+        await page.waitForTimeout(1500);
+
+        const loginButtonSelectors = [
+          'div[role="button"]:has-text("Log in")',
+          'button[data-testid="LoginForm_Login_Button"]',
+          'div[data-testid="LoginForm_Login_Button"]',
+          'span:has-text("Log in")',
+        ];
+
+        let loginClicked = false;
+        for (const selector of loginButtonSelectors) {
+          try {
+            const btn = page.locator(selector).first();
+            if (await btn.isVisible({ timeout: 3000 })) {
+              await btn.click();
+              console.log("✅ Clicked Log in button");
+              loginClicked = true;
+              break;
+            }
+          } catch (e) {
+            continue;
+          }
+        }
+
+        if (!loginClicked) {
+          console.log("⚠️ Log in button not found, trying Enter key...");
+          await page.keyboard.press("Enter");
+        }
+
+        // Wait for login to complete
+        await page.waitForTimeout(8000);
+
+        // Verify login success
+        const currentUrl = page.url();
+        console.log("📍 Current URL after login:", currentUrl);
+
+        if (currentUrl.includes("/login") || currentUrl.includes("/i/flow/login")) {
+          // Still on login page - check for error message
+          const errorVisible = await page
+            .locator('span:has-text("Wrong password")')
+            .isVisible({ timeout: 3000 })
+            .catch(() => false);
+
+          if (errorVisible) {
+            throw new Error("Twitter login failed: Wrong password");
+          }
+
+          // Take screenshot for debugging
+          await page.screenshot({ 
+            path: `twitter-login-stuck-${Date.now()}.png`, 
+            fullPage: true 
+          });
+
+          throw new Error("Twitter login failed - still on login page. Check screenshot.");
+        }
+
+        console.log("✅ Twitter login successful");
         break;
 
       case "tiktok":
@@ -479,6 +644,7 @@ app.post("/login-social", async (req, res) => {
         await page.fill('input[name="username"]', username);
         await page.fill('input[name="password"]', password);
         await page.click("button");
+        await page.waitForTimeout(5000);
         break;
 
       case "linkedin":
@@ -486,6 +652,7 @@ app.post("/login-social", async (req, res) => {
         await page.fill("#username", username);
         await page.fill("#password", password);
         await page.click('button[type="submit"]');
+        await page.waitForTimeout(5000);
         break;
 
       case "youtube":
@@ -496,6 +663,7 @@ app.post("/login-social", async (req, res) => {
         await page.waitForTimeout(3000);
         await page.fill("input[type=password]", password);
         await page.keyboard.press("Enter");
+        await page.waitForTimeout(5000);
         break;
     }
 
@@ -2493,45 +2661,493 @@ async function facebookFollow(page, targetUrl) {
   throw new Error("Facebook Add Friend button not found");
 }
 
+// ==========================================
+// LINKEDIN FOLLOW FUNCTION
+// ==========================================
+async function linkedinFollow(page, targetUrl) {
+  console.log("💼 Processing LinkedIn follow/connect...");
+
+  try {
+    if (!targetUrl) throw new Error("Target URL missing");
+
+    await page.goto(targetUrl, {
+      waitUntil: "domcontentloaded",
+      timeout: 60000,
+    });
+
+    console.log("⏳ LinkedIn profile loaded, waiting for content...");
+    await page.waitForTimeout(5000);
+
+    // Close any popups/modals
+    const closeSelectors = [
+      '[aria-label="Dismiss"]',
+      'button[aria-label="Dismiss"]',
+      '[data-test-modal-close-btn]',
+    ];
+
+    for (const selector of closeSelectors) {
+      try {
+        await page.locator(selector).first().click({ timeout: 2000 });
+        console.log("✅ Closed popup");
+        await page.waitForTimeout(1000);
+      } catch (e) {
+        // No popup to close
+      }
+    }
+
+    // Scroll to load profile actions
+    await page.evaluate(() => {
+      window.scrollBy(0, 200);
+    });
+    await page.waitForTimeout(2000);
+
+    console.log("🔍 Looking for Connect/Follow button...");
+
+    // Check if already connected or following
+    const alreadyConnectedSelectors = [
+      'button:has-text("Message")',
+      'button:has-text("Pending")',
+      'button[aria-label*="Pending"]',
+      'span:text-is("Message")',
+      'span:text-is("Following")',
+    ];
+
+    let alreadyConnected = false;
+    for (const selector of alreadyConnectedSelectors) {
+      const elem = page.locator(selector).first();
+      if (await elem.isVisible({ timeout: 2000 }).catch(() => false)) {
+        alreadyConnected = true;
+        console.log(`ℹ️ Already connected/following - found: ${selector}`);
+        break;
+      }
+    }
+
+    if (alreadyConnected) {
+      return {
+        success: true,
+        message: "Already connected or request pending",
+      };
+    }
+
+    // Find Connect or Follow button with multiple strategies
+    const connectFollowSelectors = [
+      // Connect button (sends connection request)
+      'button:has-text("Connect")',
+      'button[aria-label*="Connect"]',
+      'span:text-is("Connect")',
+      
+      // Follow button (for following without connecting)
+      'button:has-text("Follow")',
+      'button[aria-label*="Follow"]',
+      'span:text-is("Follow")',
+      
+      // More specific selectors
+      'div.pvs-profile-actions button:has-text("Connect")',
+      'div.pvs-profile-actions button:has-text("Follow")',
+      
+      // Action bar buttons
+      'section.artdeco-card button:has-text("Connect")',
+      'section.artdeco-card button:has-text("Follow")',
+    ];
+
+    let actionButton = null;
+    let foundSelector = null;
+    let actionType = null; // 'connect' or 'follow'
+
+    for (const selector of connectFollowSelectors) {
+      try {
+        const btn = page.locator(selector).first();
+        if (await btn.isVisible({ timeout: 3000 })) {
+          actionButton = btn;
+          foundSelector = selector;
+          
+          // Determine if it's Connect or Follow
+          const buttonText = await btn.textContent();
+          actionType = buttonText.toLowerCase().includes('connect') ? 'connect' : 'follow';
+          
+          console.log(`✅ Found ${actionType} button with selector: ${selector}`);
+          break;
+        }
+      } catch (e) {
+        continue;
+      }
+    }
+
+    // Try "More" dropdown if primary buttons not found
+    if (!actionButton) {
+      console.log("🔍 Trying 'More' dropdown...");
+      
+      const moreButton = page.locator('button:has-text("More")').first();
+      if (await moreButton.isVisible({ timeout: 3000 }).catch(() => false)) {
+        await moreButton.click();
+        await page.waitForTimeout(2000);
+
+        // Look for Connect/Follow in dropdown
+        const dropdownSelectors = [
+          'div[role="menu"] span:text-is("Connect")',
+          'div[role="menu"] span:text-is("Follow")',
+          'ul.artdeco-dropdown__content-inner span:text-is("Connect")',
+          'ul.artdeco-dropdown__content-inner span:text-is("Follow")',
+        ];
+
+        for (const selector of dropdownSelectors) {
+          const btn = page.locator(selector).first();
+          if (await btn.isVisible({ timeout: 2000 }).catch(() => false)) {
+            actionButton = btn;
+            foundSelector = selector;
+            
+            const buttonText = await btn.textContent();
+            actionType = buttonText.toLowerCase().includes('connect') ? 'connect' : 'follow';
+            
+            console.log(`✅ Found ${actionType} in More dropdown: ${selector}`);
+            break;
+          }
+        }
+      }
+    }
+
+    if (!actionButton) {
+      // Take screenshot for debugging
+      const screenshotPath = `linkedin-follow-error-${Date.now()}.png`;
+      await page.screenshot({
+        path: screenshotPath,
+        fullPage: true,
+      });
+      console.log(`📸 Screenshot saved: ${screenshotPath}`);
+      
+      throw new Error("LinkedIn Connect/Follow button not found - check screenshot");
+    }
+
+    // Click the Connect/Follow button
+    console.log(`💼 Clicking ${actionType} button...`);
+    
+    await actionButton.scrollIntoViewIfNeeded();
+    await page.waitForTimeout(500);
+    
+    try {
+      await actionButton.hover({ timeout: 5000 });
+      await page.waitForTimeout(300);
+      await actionButton.click({ timeout: 5000 });
+    } catch (e) {
+      console.log("⚠️ Regular click failed, trying force click...");
+      await actionButton.click({ force: true });
+    }
+
+    await page.waitForTimeout(3000);
+
+    // Handle "Connect" modal if it appears
+    if (actionType === 'connect') {
+      console.log("🔍 Checking for connection request modal...");
+
+      // Look for "Add a note" or "Send" button in modal
+      const modalSelectors = [
+        'button[aria-label="Send now"]',
+        'button:has-text("Send without a note")',
+        'button:has-text("Send")',
+        'button[aria-label="Send invitation"]',
+      ];
+
+      let modalHandled = false;
+      for (const selector of modalSelectors) {
+        try {
+          const sendBtn = page.locator(selector).first();
+          if (await sendBtn.isVisible({ timeout: 5000 })) {
+            await sendBtn.click({ timeout: 5000 });
+            console.log(`✅ Sent connection request using: ${selector}`);
+            modalHandled = true;
+            break;
+          }
+        } catch (e) {
+          continue;
+        }
+      }
+
+      if (modalHandled) {
+        await page.waitForTimeout(3000);
+      } else {
+        console.log("ℹ️ No connection modal appeared or already sent");
+      }
+    }
+
+    // Verify success
+    await page.waitForTimeout(2000);
+
+    const successIndicators = [
+      'button:has-text("Pending")',
+      'button:has-text("Message")',
+      'button[aria-label*="Pending"]',
+      'span:text-is("Pending")',
+      'span:text-is("Following")',
+    ];
+
+    let actionConfirmed = false;
+    for (const indicator of successIndicators) {
+      if (await page.locator(indicator).first().isVisible({ timeout: 3000 }).catch(() => false)) {
+        actionConfirmed = true;
+        console.log(`✅ Success confirmed - found: ${indicator}`);
+        break;
+      }
+    }
+
+    if (!actionConfirmed) {
+      console.warn("⚠️ Success confirmation not detected - but action likely worked");
+    }
+
+    const successMessage = actionType === 'connect' 
+      ? "Connection request sent successfully"
+      : "User followed successfully";
+
+    console.log(`💼 LinkedIn ${actionType} successful`);
+    return { 
+      success: true, 
+      message: actionConfirmed ? successMessage : `${successMessage} (confirmation pending)`,
+      action: actionType,
+      profile_url: targetUrl 
+    };
+
+  } catch (error) {
+    console.error("❌ LinkedIn follow/connect failed:", error.message);
+
+    // Debug screenshot
+    const timestamp = Date.now();
+    try {
+      await page.screenshot({
+        path: `linkedin-follow-error-${timestamp}.png`,
+        fullPage: true,
+      });
+      console.log(`📸 Error screenshot saved: linkedin-follow-error-${timestamp}.png`);
+    } catch (screenshotError) {
+      console.log("⚠️ Could not save error screenshot");
+    }
+
+    return {
+      success: false,
+      message: error.message,
+      debug_screenshot: `linkedin-follow-error-${timestamp}.png`,
+    };
+  }
+}
+
 async function twitterFollow(page, targetUrl) {
   console.log("🐦 Processing Twitter/X follow...");
 
-  await page.goto(targetUrl, {
-    waitUntil: "domcontentloaded",
-    timeout: 60000,
-  });
+  try {
+    if (!targetUrl) throw new Error("Target URL missing");
 
-  await page.waitForTimeout(5000);
+    await page.goto(targetUrl, {
+      waitUntil: "domcontentloaded",
+      timeout: 60000,
+    });
 
-  const selectors = [
-    '[data-testid$="-follow"]',
-    'button:has-text("Follow")',
-    '[role="button"]:has-text("Follow")',
-  ];
+    console.log("⏳ Twitter profile loaded, waiting for content...");
+    await page.waitForTimeout(6000);
 
-  for (const selector of selectors) {
-    try {
-      const btn = page.locator(selector).first();
-      if (await btn.isVisible({ timeout: 5000 })) {
-        await btn.click({ timeout: 5000 });
-        console.log(`✅ Twitter follow clicked: ${selector}`);
-        return;
+    // Scroll to ensure profile actions are loaded
+    await page.evaluate(() => {
+      window.scrollBy(0, 300);
+    });
+    await page.waitForTimeout(2000);
+
+    console.log("🔍 Checking current follow status...");
+
+    // Check if already following and find follow button
+    const followStatus = await page.evaluate(() => {
+      const buttons = Array.from(document.querySelectorAll('button, div[role="button"], span[role="button"]'));
+      
+      for (const btn of buttons) {
+        const text = btn.textContent?.trim() || '';
+        const ariaLabel = btn.getAttribute('aria-label') || '';
+        const testId = btn.getAttribute('data-testid') || '';
+        
+        // Check for "Following" state (already followed)
+        if (
+          text === 'Following' ||
+          ariaLabel.includes('Following') ||
+          testId.endsWith('-unfollow') ||
+          (testId.includes('unfollow') && !testId.includes('follow-'))
+        ) {
+          return { isFollowing: true, foundButton: false };
+        }
       }
-    } catch {}
+
+      // Now look for Follow button
+      for (const btn of buttons) {
+        const text = btn.textContent?.trim() || '';
+        const ariaLabel = btn.getAttribute('aria-label') || '';
+        const testId = btn.getAttribute('data-testid') || '';
+        
+        // Check for "Follow" button (not "Following")
+        if (
+          (text === 'Follow' && text !== 'Following') ||
+          (ariaLabel === 'Follow' && !ariaLabel.includes('Following')) ||
+          (testId.endsWith('-follow') && !testId.includes('unfollow'))
+        ) {
+          // Mark this button for clicking
+          btn.setAttribute('data-target-follow-btn', 'true');
+          return { isFollowing: false, foundButton: true };
+        }
+      }
+      
+      return { isFollowing: false, foundButton: false };
+    });
+
+    if (followStatus.isFollowing) {
+      console.log("ℹ️ User is already following this account");
+      return {
+        success: true,
+        message: "Already following this user",
+        alreadyFollowing: true,
+      };
+    }
+
+    if (!followStatus.foundButton) {
+      console.log("❌ Follow button not found on page");
+      
+      const screenshotPath = `twitter-no-follow-btn-${Date.now()}.png`;
+      await page.screenshot({
+        path: screenshotPath,
+        fullPage: true,
+      });
+      console.log(`📸 Screenshot saved: ${screenshotPath}`);
+      
+      throw new Error("Twitter Follow button not found - user may be private or blocked");
+    }
+
+    console.log("🔍 Follow button found, attempting to click...");
+
+    // Get the marked button
+    const followButton = page.locator('[data-target-follow-btn="true"]').first();
+
+    // Scroll button into view
+    await followButton.scrollIntoViewIfNeeded();
+    await page.waitForTimeout(1000);
+
+    // Try to click with multiple strategies
+    let clickSuccessful = false;
+    
+    // Strategy 1: Normal click
+    try {
+      await followButton.hover({ timeout: 3000 });
+      await page.waitForTimeout(500);
+      await followButton.click({ timeout: 5000 });
+      clickSuccessful = true;
+      console.log("✅ Clicked Follow button (normal click)");
+    } catch (e) {
+      console.log("⚠️ Normal click failed, trying force click...");
+    }
+
+    // Strategy 2: Force click
+    if (!clickSuccessful) {
+      try {
+        await followButton.click({ force: true, timeout: 5000 });
+        clickSuccessful = true;
+        console.log("✅ Clicked Follow button (force click)");
+      } catch (e) {
+        console.log("⚠️ Force click failed, trying JavaScript click...");
+      }
+    }
+
+    // Strategy 3: JavaScript click
+    if (!clickSuccessful) {
+      try {
+        await page.evaluate(() => {
+          const btn = document.querySelector('[data-target-follow-btn="true"]');
+          if (btn) {
+            btn.click();
+            return true;
+          }
+          return false;
+        });
+        clickSuccessful = true;
+        console.log("✅ Clicked Follow button (JavaScript click)");
+      } catch (e) {
+        console.log("❌ All click strategies failed");
+      }
+    }
+
+    if (!clickSuccessful) {
+      throw new Error("Failed to click Follow button after multiple attempts");
+    }
+
+    // Wait for the action to register
+    console.log("⏳ Waiting for follow action to complete...");
+    await page.waitForTimeout(4000);
+
+    // Verify follow was successful
+    console.log("🔍 Verifying follow status...");
+    
+    const followConfirmed = await page.evaluate(() => {
+      const buttons = Array.from(document.querySelectorAll('button, div[role="button"], span[role="button"]'));
+
+      for (const btn of buttons) {
+        const text = btn.textContent?.trim() || '';
+        const ariaLabel = btn.getAttribute('aria-label') || '';
+        const testId = btn.getAttribute('data-testid') || '';
+
+        // Check if button now shows "Following"
+        if (
+          text === 'Following' ||
+          ariaLabel.includes('Following') ||
+          testId.endsWith('-unfollow') ||
+          (testId.includes('unfollow') && !testId.includes('follow-'))
+        ) {
+          return true;
+        }
+      }
+
+      return false;
+    });
+
+    if (followConfirmed) {
+      console.log("✅ Twitter follow successful and confirmed");
+      return {
+        success: true,
+        message: "User followed successfully",
+        confirmed: true,
+        profile_url: targetUrl,
+      };
+    } else {
+      console.warn("⚠️ Follow button was clicked but confirmation not detected");
+      
+      // Take a screenshot for debugging
+      const screenshotPath = `twitter-follow-unconfirmed-${Date.now()}.png`;
+      await page.screenshot({
+        path: screenshotPath,
+        fullPage: true,
+      });
+      console.log(`📸 Screenshot saved: ${screenshotPath}`);
+      
+      return {
+        success: true,
+        message: "Follow button clicked (awaiting confirmation)",
+        confirmed: false,
+        profile_url: targetUrl,
+        note: "Button was clicked but 'Following' status not yet detected. May need a few seconds.",
+      };
+    }
+
+  } catch (error) {
+    console.error("❌ Twitter follow failed:", error.message);
+
+    // Debug screenshot
+    const timestamp = Date.now();
+    try {
+      await page.screenshot({
+        path: `twitter-follow-error-${timestamp}.png`,
+        fullPage: true,
+      });
+      console.log(`📸 Error screenshot saved: twitter-follow-error-${timestamp}.png`);
+    } catch (screenshotError) {
+      console.log("⚠️ Could not save error screenshot");
+    }
+
+    return {
+      success: false,
+      message: error.message,
+      debug_screenshot: `twitter-follow-error-${timestamp}.png`,
+      profile_url: targetUrl,
+    };
   }
-
-  const already = await page
-    .locator('button:has-text("Following")')
-    .first()
-    .isVisible()
-    .catch(() => false);
-
-  if (already) {
-    console.log("ℹ️ Already following on Twitter/X");
-    return;
-  }
-
-  throw new Error("Twitter follow button not found");
 }
 async function followUser(page, platform, targetUrl) {
   console.log(`👤 Following user on ${platform}...`);
@@ -2543,7 +3159,11 @@ async function followUser(page, platform, targetUrl) {
       await facebookFollow(page, targetUrl);
     } else if (platform === "twitter") {
       await twitterFollow(page, targetUrl);
-    } else {
+    }
+    else if( platform === "linkedin") {
+      return await linkedinFollow(page, targetUrl);
+    }
+     else {
       throw new Error(`Platform ${platform} not supported`);
     }
 
@@ -2684,34 +3304,300 @@ async function facebookUnfriend(page, targetUrl) {
 async function twitterUnfollow(page, targetUrl) {
   console.log("🐦 Processing Twitter/X unfollow...");
 
-  await page.goto(targetUrl, {
-    waitUntil: "domcontentloaded",
-    timeout: 60000,
-  });
+  try {
+    if (!targetUrl) throw new Error("Target URL missing");
 
-  await page.waitForTimeout(4000);
+    await page.goto(targetUrl, {
+      waitUntil: "domcontentloaded",
+      timeout: 60000,
+    });
 
-  const unfollowBtn = page.locator('[data-testid$="-unfollow"]').first();
-  const isFollowing = await unfollowBtn.isVisible().catch(() => false);
+    console.log("⏳ Twitter profile loaded, waiting for content...");
+    await page.waitForTimeout(6000);
 
-  if (!isFollowing) {
-    return { success: true, message: "User was not followed" };
+    // Scroll to ensure profile actions are loaded
+    await page.evaluate(() => {
+      window.scrollBy(0, 300);
+    });
+    await page.waitForTimeout(2000);
+
+    console.log("🔍 Checking if currently following...");
+
+    // Check if currently following and find unfollow button
+    const followStatus = await page.evaluate(() => {
+      const buttons = Array.from(document.querySelectorAll('button, div[role="button"], span[role="button"]'));
+      
+      for (const btn of buttons) {
+        const text = btn.textContent?.trim() || '';
+        const ariaLabel = btn.getAttribute('aria-label') || '';
+        const testId = btn.getAttribute('data-testid') || '';
+        
+        // Check for "Following" state (can unfollow)
+        if (
+          text === 'Following' ||
+          ariaLabel.includes('Following') ||
+          testId.endsWith('-unfollow') ||
+          (testId.includes('unfollow') && !testId.includes('follow-'))
+        ) {
+          // Mark this button for clicking
+          btn.setAttribute('data-target-unfollow-btn', 'true');
+          return { isFollowing: true, foundButton: true };
+        }
+      }
+      
+      // Check if showing "Follow" button (not following)
+      for (const btn of buttons) {
+        const text = btn.textContent?.trim() || '';
+        const testId = btn.getAttribute('data-testid') || '';
+        
+        if (
+          text === 'Follow' ||
+          (testId.endsWith('-follow') && !testId.includes('unfollow'))
+        ) {
+          return { isFollowing: false, foundButton: false };
+        }
+      }
+      
+      return { isFollowing: false, foundButton: false };
+    });
+
+    if (!followStatus.isFollowing) {
+      console.log("ℹ️ User is not currently following this account");
+      return {
+        success: true,
+        message: "User was not followed",
+        wasFollowing: false,
+      };
+    }
+
+    if (!followStatus.foundButton) {
+      console.log("❌ Following button not found on page");
+      
+      const screenshotPath = `twitter-no-unfollow-btn-${Date.now()}.png`;
+      await page.screenshot({
+        path: screenshotPath,
+        fullPage: true,
+      });
+      console.log(`📸 Screenshot saved: ${screenshotPath}`);
+      
+      throw new Error("Twitter Following button not found");
+    }
+
+    console.log("🔍 Following button found, attempting to click...");
+
+    // Get the marked button
+    const unfollowButton = page.locator('[data-target-unfollow-btn="true"]').first();
+
+    // Scroll button into view
+    await unfollowButton.scrollIntoViewIfNeeded();
+    await page.waitForTimeout(1000);
+
+    // Click the Following button
+    let clickSuccessful = false;
+    
+    // Strategy 1: Normal click
+    try {
+      await unfollowButton.hover({ timeout: 3000 });
+      await page.waitForTimeout(500);
+      await unfollowButton.click({ timeout: 5000 });
+      clickSuccessful = true;
+      console.log("✅ Clicked Following button (normal click)");
+    } catch (e) {
+      console.log("⚠️ Normal click failed, trying force click...");
+    }
+
+    // Strategy 2: Force click
+    if (!clickSuccessful) {
+      try {
+        await unfollowButton.click({ force: true, timeout: 5000 });
+        clickSuccessful = true;
+        console.log("✅ Clicked Following button (force click)");
+      } catch (e) {
+        console.log("⚠️ Force click failed, trying JavaScript click...");
+      }
+    }
+
+    // Strategy 3: JavaScript click
+    if (!clickSuccessful) {
+      try {
+        await page.evaluate(() => {
+          const btn = document.querySelector('[data-target-unfollow-btn="true"]');
+          if (btn) {
+            btn.click();
+            return true;
+          }
+          return false;
+        });
+        clickSuccessful = true;
+        console.log("✅ Clicked Following button (JavaScript click)");
+      } catch (e) {
+        console.log("❌ All click strategies failed");
+      }
+    }
+
+    if (!clickSuccessful) {
+      throw new Error("Failed to click Following button after multiple attempts");
+    }
+
+    // Wait for confirmation modal to appear
+    console.log("⏳ Waiting for unfollow confirmation modal...");
+    await page.waitForTimeout(2000);
+
+    // Find and click the confirmation button
+    const confirmSelectors = [
+      '[data-testid="confirmationSheetConfirm"]',
+      'button:has-text("Unfollow")',
+      'div[role="button"]:has-text("Unfollow")',
+      '[data-testid="confirmationSheetDialog"] button:has-text("Unfollow")',
+    ];
+
+    let confirmButton = null;
+    let confirmClicked = false;
+
+    for (const selector of confirmSelectors) {
+      try {
+        const btn = page.locator(selector).first();
+        const isVisible = await btn.isVisible({ timeout: 5000 });
+        
+        if (isVisible) {
+          confirmButton = btn;
+          console.log(`✅ Found confirmation button: ${selector}`);
+          break;
+        }
+      } catch (e) {
+        continue;
+      }
+    }
+
+    if (!confirmButton) {
+      console.log("⚠️ Confirmation button not found, trying JavaScript...");
+      
+      // Try to find and click confirmation via JavaScript
+      const jsConfirmed = await page.evaluate(() => {
+        // Look for modal dialog
+        const dialogs = document.querySelectorAll('[role="dialog"], [data-testid="confirmationSheetDialog"]');
+        
+        for (const dialog of dialogs) {
+          const buttons = dialog.querySelectorAll('button, div[role="button"]');
+          
+          for (const btn of buttons) {
+            const text = btn.textContent?.trim() || '';
+            const testId = btn.getAttribute('data-testid') || '';
+            
+            if (text === 'Unfollow' || testId === 'confirmationSheetConfirm') {
+              btn.click();
+              return true;
+            }
+          }
+        }
+        
+        return false;
+      });
+
+      if (jsConfirmed) {
+        confirmClicked = true;
+        console.log("✅ Clicked confirmation button via JavaScript");
+      }
+    } else {
+      // Click the confirmation button
+      try {
+        await confirmButton.click({ timeout: 5000 });
+        confirmClicked = true;
+        console.log("✅ Clicked confirmation button");
+      } catch (e) {
+        // Try force click
+        try {
+          await confirmButton.click({ force: true });
+          confirmClicked = true;
+          console.log("✅ Clicked confirmation button (force)");
+        } catch (e2) {
+          console.log("❌ Failed to click confirmation button");
+        }
+      }
+    }
+
+    if (!confirmClicked) {
+      throw new Error("Failed to confirm unfollow action");
+    }
+
+    // Wait for the action to complete
+    console.log("⏳ Waiting for unfollow action to complete...");
+    await page.waitForTimeout(4000);
+
+    // Verify unfollow was successful
+    console.log("🔍 Verifying unfollow status...");
+    
+    const unfollowConfirmed = await page.evaluate(() => {
+      const buttons = Array.from(document.querySelectorAll('button, div[role="button"], span[role="button"]'));
+
+      for (const btn of buttons) {
+        const text = btn.textContent?.trim() || '';
+        const ariaLabel = btn.getAttribute('aria-label') || '';
+        const testId = btn.getAttribute('data-testid') || '';
+
+        // Check if button now shows "Follow" (not following anymore)
+        if (
+          (text === 'Follow' && text !== 'Following') ||
+          (ariaLabel === 'Follow' && !ariaLabel.includes('Following')) ||
+          (testId.endsWith('-follow') && !testId.includes('unfollow'))
+        ) {
+          return true;
+        }
+      }
+
+      return false;
+    });
+
+    if (unfollowConfirmed) {
+      console.log("✅ Twitter unfollow successful and confirmed");
+      return {
+        success: true,
+        message: "User unfollowed successfully",
+        confirmed: true,
+        profile_url: targetUrl,
+      };
+    } else {
+      console.warn("⚠️ Unfollow action completed but confirmation not detected");
+      
+      // Take a screenshot for debugging
+      const screenshotPath = `twitter-unfollow-unconfirmed-${Date.now()}.png`;
+      await page.screenshot({
+        path: screenshotPath,
+        fullPage: true,
+      });
+      console.log(`📸 Screenshot saved: ${screenshotPath}`);
+      
+      return {
+        success: true,
+        message: "Unfollow action completed (awaiting confirmation)",
+        confirmed: false,
+        profile_url: targetUrl,
+        note: "Unfollow was executed but 'Follow' status not yet detected. May need a few seconds.",
+      };
+    }
+
+  } catch (error) {
+    console.error("❌ Twitter unfollow failed:", error.message);
+
+    // Debug screenshot
+    const timestamp = Date.now();
+    try {
+      await page.screenshot({
+        path: `twitter-unfollow-error-${timestamp}.png`,
+        fullPage: true,
+      });
+      console.log(`📸 Error screenshot saved: twitter-unfollow-error-${timestamp}.png`);
+    } catch (screenshotError) {
+      console.log("⚠️ Could not save error screenshot");
+    }
+
+    return {
+      success: false,
+      message: error.message,
+      debug_screenshot: `twitter-unfollow-error-${timestamp}.png`,
+      profile_url: targetUrl,
+    };
   }
-
-  await unfollowBtn.click();
-  await page.waitForTimeout(2000);
-
-  const confirmBtn = page
-    .locator('[data-testid="confirmationSheetConfirm"]')
-    .first();
-
-  await confirmBtn.waitFor({ state: "visible", timeout: 10000 });
-  await confirmBtn.click();
-
-  await page.waitForTimeout(3000);
-
-  console.log("✅ Twitter unfollowed");
-  return { success: true, message: "Twitter unfollowed successfully" };
 }
 
 async function unfollowUser(page, platform, targetUrl) {
@@ -2729,6 +3615,7 @@ async function unfollowUser(page, platform, targetUrl) {
     if (platform === "twitter" || platform === "x") {
       return await twitterUnfollow(page, targetUrl);
     }
+
 
     return {
       success: false,
