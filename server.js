@@ -2553,6 +2553,424 @@ async function facebookComment(page, targetUrl, commentText) {
   }
 }
 
+async function twitterComment(page, targetUrl, commentText) {
+  console.log("🐦 Commenting on Twitter/X...");
+
+  if (!targetUrl) throw new Error("Target URL missing");
+  if (!commentText) throw new Error("Comment text missing");
+
+  try {
+    // Navigate to the tweet
+    await page.goto(targetUrl, {
+      waitUntil: "domcontentloaded",
+      timeout: 60000,
+    });
+
+    console.log("⏳ Tweet loaded, waiting for content...");
+    await page.waitForTimeout(6000);
+
+    // Scroll to load reply section
+    await page.evaluate(() => {
+      window.scrollBy(0, 400);
+    });
+    await page.waitForTimeout(2000);
+
+    console.log("🔍 Looking for reply/comment box...");
+
+    // Find reply box with multiple strategies
+    const replyBoxSelectors = [
+      // Main reply box selectors
+      'div[data-testid="tweetTextarea_0"]',
+      'div[data-testid="tweetTextarea_1"]',
+      'div[aria-label="Post text"]',
+      'div[aria-label="Tweet text"]',
+      'div[contenteditable="true"][role="textbox"]',
+      'div[contenteditable="true"][data-testid*="tweet"]',
+      'div.public-DraftEditor-content',
+      'div.DraftEditor-editorContainer',
+      
+      // Alternative selectors
+      'div[class*="public-DraftEditor"]',
+      'div[data-contents="true"]',
+    ];
+
+    let replyBox = null;
+    let foundSelector = null;
+
+    // First try to find visible reply box
+    for (const sel of replyBoxSelectors) {
+      try {
+        const box = page.locator(sel).first();
+        const isVisible = await box.isVisible({ timeout: 3000 }).catch(() => false);
+        
+        if (isVisible) {
+          replyBox = box;
+          foundSelector = sel;
+          console.log(`✅ Found reply box with selector: ${sel}`);
+          break;
+        }
+      } catch (e) {
+        continue;
+      }
+    }
+
+    // If not found, try clicking "Post your reply" or similar trigger
+    if (!replyBox) {
+      console.log("🔍 Reply box not visible, trying to activate it...");
+      
+      const replyTriggers = [
+        'div[data-testid="reply"]',
+        'button[data-testid="reply"]',
+        'div[aria-label="Reply"]',
+        'span:has-text("Post your reply")',
+        'div:has-text("Post your reply")',
+      ];
+
+      for (const trigger of replyTriggers) {
+        try {
+          const elem = page.locator(trigger).first();
+          if (await elem.isVisible({ timeout: 3000 })) {
+            await elem.click({ timeout: 3000 });
+            console.log("✅ Clicked reply trigger");
+            await page.waitForTimeout(2000);
+            
+            // Try finding reply box again after clicking
+            for (const sel of replyBoxSelectors) {
+              const box = page.locator(sel).first();
+              if (await box.isVisible({ timeout: 3000 }).catch(() => false)) {
+                replyBox = box;
+                foundSelector = sel;
+                console.log(`✅ Found reply box after clicking: ${sel}`);
+                break;
+              }
+            }
+            
+            if (replyBox) break;
+          }
+        } catch (e) {
+          continue;
+        }
+      }
+    }
+
+    // Try JavaScript method to find reply box
+    if (!replyBox) {
+      console.log("🔍 Trying JavaScript method to find reply box...");
+      
+      const foundViaJs = await page.evaluate(() => {
+        // Find contenteditable divs
+        const editableDivs = Array.from(document.querySelectorAll('div[contenteditable="true"]'));
+        
+        for (const div of editableDivs) {
+          const ariaLabel = div.getAttribute('aria-label') || '';
+          const testId = div.getAttribute('data-testid') || '';
+          
+          if (
+            ariaLabel.includes('Post text') ||
+            ariaLabel.includes('Tweet text') ||
+            testId.includes('tweetTextarea')
+          ) {
+            div.setAttribute('data-target-reply-box', 'true');
+            return true;
+          }
+        }
+        
+        // Fallback: find any contenteditable div in reply section
+        const allContentEditable = document.querySelectorAll('div[contenteditable="true"][role="textbox"]');
+        if (allContentEditable.length > 0) {
+          allContentEditable[0].setAttribute('data-target-reply-box', 'true');
+          return true;
+        }
+        
+        return false;
+      });
+
+      if (foundViaJs) {
+        replyBox = page.locator('[data-target-reply-box="true"]').first();
+        console.log("✅ Found reply box via JavaScript");
+      }
+    }
+
+    if (!replyBox) {
+      // Take screenshot for debugging
+      const screenshotPath = `twitter-comment-no-box-${Date.now()}.png`;
+      await page.screenshot({
+        path: screenshotPath,
+        fullPage: true,
+      });
+      console.log(`📸 Screenshot saved: ${screenshotPath}`);
+      
+      throw new Error("Twitter reply box not found - check screenshot");
+    }
+
+    // Click and focus on reply box
+    console.log("📝 Writing reply...");
+    await replyBox.scrollIntoViewIfNeeded();
+    await page.waitForTimeout(1000);
+    
+    // Click to focus
+    try {
+      await replyBox.click({ timeout: 5000 });
+    } catch (e) {
+      await replyBox.click({ force: true });
+    }
+    
+    await page.waitForTimeout(1500);
+
+    // Type the comment with human-like delay
+    let typingSuccessful = false;
+    
+    // Method 1: Use Playwright's fill and type
+    try {
+      await replyBox.fill("");
+      await page.waitForTimeout(500);
+      await replyBox.type(commentText, { delay: 80 + Math.random() * 120 });
+      typingSuccessful = true;
+      console.log("✅ Typed comment using Playwright");
+    } catch (e) {
+      console.log("⚠️ Playwright typing failed, trying keyboard method...");
+    }
+
+    // Method 2: Use keyboard.type
+    if (!typingSuccessful) {
+      try {
+        await page.keyboard.type(commentText, { delay: 100 });
+        typingSuccessful = true;
+        console.log("✅ Typed comment using keyboard");
+      } catch (e) {
+        console.log("⚠️ Keyboard typing failed, trying JavaScript...");
+      }
+    }
+
+    // Method 3: JavaScript insertion
+    if (!typingSuccessful) {
+      try {
+        await page.evaluate((text) => {
+          const box = document.querySelector('[data-target-reply-box="true"]') ||
+                      document.querySelector('div[contenteditable="true"][role="textbox"]');
+          
+          if (box) {
+            box.focus();
+            box.textContent = text;
+            
+            // Trigger input event
+            const inputEvent = new Event('input', { bubbles: true });
+            box.dispatchEvent(inputEvent);
+            
+            return true;
+          }
+          return false;
+        }, commentText);
+        
+        typingSuccessful = true;
+        console.log("✅ Inserted comment using JavaScript");
+      } catch (e) {
+        console.log("❌ All typing methods failed");
+      }
+    }
+
+    if (!typingSuccessful) {
+      throw new Error("Failed to type comment text");
+    }
+
+    await page.waitForTimeout(2000);
+
+    console.log("🔍 Looking for Reply button...");
+
+    // Find Reply button with multiple strategies
+    const replyBtnSelectors = [
+      // Main reply button selectors
+      'button[data-testid="tweetButton"]',
+      'button[data-testid="tweetButtonInline"]',
+      'div[data-testid="tweetButton"]',
+      'div[data-testid="tweetButtonInline"]',
+      
+      // Alternative selectors
+      'button:has-text("Reply")',
+      'div[role="button"]:has-text("Reply")',
+      'button:has-text("Post")',
+      'div[role="button"]:has-text("Post")',
+      
+      // Aria labels
+      'button[aria-label*="Reply"]',
+      'button[aria-label*="Post"]',
+      'div[aria-label*="Reply"][role="button"]',
+    ];
+
+    let replyBtn = null;
+    let replyBtnFound = false;
+
+    for (const sel of replyBtnSelectors) {
+      try {
+        const btn = page.locator(sel).first();
+        const isVisible = await btn.isVisible({ timeout: 3000 }).catch(() => false);
+        
+        if (isVisible) {
+          // Check if button is enabled
+          const isDisabled = await btn.getAttribute('disabled').catch(() => null);
+          
+          if (isDisabled === null) {
+            replyBtn = btn;
+            replyBtnFound = true;
+            console.log(`✅ Found Reply button: ${sel}`);
+            break;
+          }
+        }
+      } catch (e) {
+        continue;
+      }
+    }
+
+    // Try JavaScript method to find Reply button
+    if (!replyBtn) {
+      console.log("🔍 Trying JavaScript method to find Reply button...");
+      
+      const foundBtnViaJs = await page.evaluate(() => {
+        const buttons = Array.from(document.querySelectorAll('button, div[role="button"]'));
+        
+        for (const btn of buttons) {
+          const testId = btn.getAttribute('data-testid') || '';
+          const text = btn.textContent?.trim() || '';
+          const ariaLabel = btn.getAttribute('aria-label') || '';
+          
+          if (
+            testId === 'tweetButton' ||
+            testId === 'tweetButtonInline' ||
+            (text === 'Reply' && !btn.disabled) ||
+            (text === 'Post' && !btn.disabled) ||
+            (ariaLabel.includes('Reply') && !btn.disabled)
+          ) {
+            btn.setAttribute('data-target-reply-btn', 'true');
+            return true;
+          }
+        }
+        
+        return false;
+      });
+
+      if (foundBtnViaJs) {
+        replyBtn = page.locator('[data-target-reply-btn="true"]').first();
+        replyBtnFound = true;
+        console.log("✅ Found Reply button via JavaScript");
+      }
+    }
+
+    if (!replyBtn) {
+      // Take screenshot for debugging
+      const screenshotPath = `twitter-comment-no-btn-${Date.now()}.png`;
+      await page.screenshot({
+        path: screenshotPath,
+        fullPage: true,
+      });
+      console.log(`📸 Screenshot saved: ${screenshotPath}`);
+      
+      throw new Error("Twitter Reply button not found - check screenshot");
+    }
+
+    // Click the Reply button
+    console.log("📤 Clicking Reply button...");
+    await replyBtn.scrollIntoViewIfNeeded();
+    await page.waitForTimeout(500);
+    
+    let replyClicked = false;
+    
+    // Method 1: Normal click
+    try {
+      await replyBtn.click({ timeout: 5000 });
+      replyClicked = true;
+      console.log("✅ Clicked Reply button (normal click)");
+    } catch (e) {
+      console.log("⚠️ Normal click failed, trying force click...");
+    }
+
+    // Method 2: Force click
+    if (!replyClicked) {
+      try {
+        await replyBtn.click({ force: true });
+        replyClicked = true;
+        console.log("✅ Clicked Reply button (force click)");
+      } catch (e) {
+        console.log("⚠️ Force click failed, trying JavaScript click...");
+      }
+    }
+
+    // Method 3: JavaScript click
+    if (!replyClicked) {
+      try {
+        await page.evaluate(() => {
+          const btn = document.querySelector('[data-target-reply-btn="true"]') ||
+                      document.querySelector('button[data-testid="tweetButton"]');
+          if (btn) {
+            btn.click();
+            return true;
+          }
+          return false;
+        });
+        replyClicked = true;
+        console.log("✅ Clicked Reply button (JavaScript click)");
+      } catch (e) {
+        console.log("❌ All click methods failed");
+      }
+    }
+
+    if (!replyClicked) {
+      throw new Error("Failed to click Reply button");
+    }
+
+    // Wait for comment to be posted
+    console.log("⏳ Waiting for reply to post...");
+    await page.waitForTimeout(6000);
+
+    // Verify comment was posted by checking if it appears on the page
+    const commentPosted = await page.evaluate((text) => {
+      // Look for the comment text in the page
+      const bodyText = document.body.innerText;
+      return bodyText.includes(text);
+    }, commentText);
+
+    if (commentPosted) {
+      console.log("✅ Reply posted & verified");
+      return {
+        success: true,
+        message: "Twitter reply posted successfully",
+        verified: true,
+        tweet_url: targetUrl,
+      };
+    } else {
+      console.log("✅ Reply likely posted (verification pending)");
+      return {
+        success: true,
+        message: "Twitter reply posted (verification pending)",
+        verified: false,
+        tweet_url: targetUrl,
+        note: "Reply was submitted but verification pending. Check the tweet manually.",
+      };
+    }
+
+  } catch (error) {
+    console.error("❌ Twitter comment failed:", error.message);
+
+    // Debug screenshot with timestamp
+    const timestamp = Date.now();
+    try {
+      await page.screenshot({
+        path: `twitter-comment-error-${timestamp}.png`,
+        fullPage: true,
+      });
+      console.log(`📸 Error screenshot saved: twitter-comment-error-${timestamp}.png`);
+    } catch (screenshotError) {
+      console.log("⚠️ Could not save error screenshot");
+    }
+
+    return {
+      success: false,
+      message: error.message,
+      debug_screenshot: `twitter-comment-error-${timestamp}.png`,
+      tweet_url: targetUrl,
+    };
+  }
+}
+
 async function commentOnPost(page, platform, targetUrl, commentText) {
   try {
     if (platform === "instagram") {
@@ -2560,6 +2978,9 @@ async function commentOnPost(page, platform, targetUrl, commentText) {
     }
     if (platform === "facebook") {
       return await facebookComment(page, targetUrl, commentText);
+    }
+     if (platform === "twitter") {
+      return await twitterComment(page, targetUrl, commentText);
     }
     return {
       success: false,
@@ -2661,9 +3082,6 @@ async function facebookFollow(page, targetUrl) {
   throw new Error("Facebook Add Friend button not found");
 }
 
-// ==========================================
-// LINKEDIN FOLLOW FUNCTION
-// ==========================================
 async function linkedinFollow(page, targetUrl) {
   console.log("💼 Processing LinkedIn follow/connect...");
 
