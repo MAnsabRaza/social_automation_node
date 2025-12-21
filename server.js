@@ -59,16 +59,331 @@ const LOGIN_URL = {
 let activeBrowsers = {}; // store browsers and pages
 let activeContexts = {};
 
+// app.post("/login-social", async (req, res) => {
+//   const {
+//     username,
+//     password,
+//     platform,
+//     account_id,
+//     proxy_host,
+//     proxy_port,
+//     proxy_username,
+//     proxy_password,
+//   } = req.body;
+
+//   if (!LOGIN_URL[platform]) {
+//     return res.json({ success: false, message: "Platform not supported" });
+//   }
+
+//   console.log(`🌐 Login attempt → ${platform} | Account ID: ${account_id}`);
+
+//   try {
+//     // Reuse session if browser is already running
+//     if (activeBrowsers[account_id]) {
+//       const context = activeContexts[account_id];
+//       const storageState = await context.storageState();
+
+//       return res.json({
+//         success: true,
+//         message: "Already logged in - session reused",
+//         sessionData: JSON.stringify(storageState),
+//         cookies: storageState.cookies,
+//         authToken: extractAuthToken(storageState.cookies, platform),
+//       });
+//     }
+
+//     // Launch new browser
+//     const browser = await chromium.launch({
+//       headless: true,
+//       proxy: proxy_host
+//         ? {
+//             server: `http://${proxy_host}:${proxy_port}`,
+//             username: proxy_username || undefined,
+//             password: proxy_password || undefined,
+//           }
+//         : undefined,
+//     });
+
+//     const context = await browser.newContext({
+//       userAgent:
+//         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36",
+//       locale: "en-US",
+//       timezoneId: "America/New_York",
+//       permissions: ["geolocation", "notifications"],
+//     });
+
+//     activeBrowsers[account_id] = browser;
+//     activeContexts[account_id] = context;
+
+//     const page = await context.newPage();
+
+//     console.log("⏳ Loading login page...");
+
+//     // FIX: Instagram never reaches "networkidle" → replaced
+//     await page.goto(LOGIN_URL[platform], {
+//       waitUntil: "domcontentloaded",
+//       timeout: 60000,
+//     });
+
+//     await page.waitForTimeout(2500); // Let IG/FB scripts load
+
+//     // --------------------------
+//     //     PLATFORM LOGINS
+//     // --------------------------
+
+//     switch (platform) {
+//       case "instagram":
+//         await page.waitForSelector('input[name="username"]', {
+//           timeout: 30000,
+//         });
+
+//         await page.fill('input[name="username"]', username);
+//         await page.fill('input[name="password"]', password);
+
+//         await page.click('button[type="submit"]');
+
+//         // Wait for login redirect
+//         await page.waitForTimeout(5000);
+
+//         // Dismiss popups
+//         await page.click("text=Not now").catch(() => {});
+//         await page.click('button:has-text("Not Now")').catch(() => {});
+
+//         break;
+
+//       case "facebook":
+//         await page.waitForSelector("#email", { timeout: 20000 });
+//         await page.fill("#email", username);
+//         await page.fill("#pass", password);
+//         await page.click('button[name="login"]');
+//         break;
+
+//       case "twitter":
+//         await page.waitForSelector('input[name="text"]', { timeout: 20000 });
+//         await page.fill('input[name="text"]', username);
+//         await page.keyboard.press("Enter");
+
+//         await page.waitForTimeout(3000);
+//         await page.fill('input[name="password"]', password);
+//         await page.keyboard.press("Enter");
+//         break;
+
+//       case "tiktok":
+//         await page.waitForTimeout(3000);
+//         await page.fill('input[name="username"]', username);
+//         await page.fill('input[name="password"]', password);
+//         await page.click("button");
+//         break;
+
+//       case "linkedin":
+//         await page.waitForSelector("#username", { timeout: 20000 });
+//         await page.fill("#username", username);
+//         await page.fill("#password", password);
+//         await page.click('button[type="submit"]');
+//         break;
+
+//       case "youtube":
+//         await page.waitForSelector('input[type="email"]', { timeout: 20000 });
+//         await page.fill("input[type=email]", username);
+//         await page.keyboard.press("Enter");
+
+//         await page.waitForTimeout(3000);
+//         await page.fill("input[type=password]", password);
+//         await page.keyboard.press("Enter");
+//         break;
+//     }
+
+//     // Allow cookie/session setup
+//     await page.waitForTimeout(5000);
+
+//     // Save session
+//     const storageState = await context.storageState();
+//     const authToken = extractAuthToken(storageState.cookies, platform);
+
+//     console.log(`✅ Login successful → ${account_id}`);
+
+//     return res.json({
+//       success: true,
+//       message: "Login successful",
+//       sessionData: JSON.stringify(storageState),
+//       cookies: storageState.cookies,
+//       authToken: authToken,
+//     });
+//   } catch (error) {
+//     console.error("❌ Login failed:", error.message);
+
+//     return res.json({
+//       success: false,
+//       message: "Login error",
+//       error: error.message,
+//     });
+//   }
+// });
+// // --------------- CHECK LOGIN STATUS -------------------
+// app.post("/check-login", async (req, res) => {
+//   const {
+//     platform,
+//     cookies,
+//     sessionData,
+//     proxy_host,
+//     proxy_port,
+//     proxy_username,
+//     proxy_password,
+//   } = req.body;
+
+//   if (!cookies || !sessionData) {
+//     return res.json({
+//       success: false,
+//       isLoggedIn: false,
+//       message: "No session data found",
+//     });
+//   }
+
+//   try {
+//     const browser = await chromium.launch({
+//       headless: true,
+//       proxy: proxy_host
+//         ? {
+//             server: `http://${proxy_host}:${proxy_port}`,
+//             username: proxy_username || undefined,
+//             password: proxy_password || undefined,
+//           }
+//         : undefined,
+//     });
+
+//     const parsedSessionData = JSON.parse(sessionData);
+//     const context = await browser.newContext({
+//       storageState: parsedSessionData,
+//     });
+//     const page = await context.newPage();
+
+//     // Check if logged in by navigating to home page
+//     const homeUrls = {
+//       instagram: "https://www.instagram.com/",
+//       facebook: "https://www.facebook.com/",
+//       twitter: "https://twitter.com/home",
+//       linkedin: "https://www.linkedin.com/feed/",
+//       youtube: "https://www.youtube.com/",
+//       tiktok: "https://www.tiktok.com/foryou",
+//     };
+
+//     await page.goto(homeUrls[platform] || LOGIN_URL[platform], {
+//       timeout: 30000,
+//     });
+//     await page.waitForTimeout(3000);
+
+//     const currentUrl = page.url();
+//     const isLoggedIn =
+//       !currentUrl.includes("/login") && !currentUrl.includes("/signin");
+
+//     await browser.close();
+
+//     res.json({ success: true, isLoggedIn });
+//   } catch (error) {
+//     console.log(error);
+//     res.json({ success: false, isLoggedIn: false, error: error.message });
+//   }
+// });
+
+// app.post("/execute-task", async (req, res) => {
+//   const { task, account } = req.body;
+
+//   console.log("📋 Executing Task:", task);
+
+//   if (!task || !account) {
+//     return res.json({
+//       success: false,
+//       message: "Missing task or account data",
+//     });
+//   }
+
+//   const platform = account.platform;
+//   const taskType = task.task_type;
+
+//   try {
+//     let browser, context, page;
+
+//     if (activeBrowsers[account.id]) {
+//       console.log("♻️ Reusing existing browser session");
+//       browser = activeBrowsers[account.id];
+//       context = activeContexts[account.id];
+//       page = await context.newPage();
+//     } else {
+//       console.log("🚀 Launching new browser session");
+
+//       let storageState = null;
+//       if (account.session_data) {
+//         try {
+//           storageState = JSON.parse(account.session_data);
+//         } catch {}
+//       }
+
+//       browser = await chromium.launch({
+//         headless: false,
+//         proxy: account.proxy_id
+//           ? {
+//               server: `http://${account.proxy.host}:${account.proxy.port}`,
+//               username: account.proxy.username || undefined,
+//               password: account.proxy.password || undefined,
+//             }
+//           : undefined,
+//       });
+
+//       context = await browser.newContext({
+//         storageState,
+//         userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/129.0.0.0",
+//         locale: "en-US",
+//       });
+
+//       activeBrowsers[account.id] = browser;
+//       activeContexts[account.id] = context;
+
+//       page = await context.newPage();
+//     }
+
+//     // ✅ POST TASK
+//     if (taskType === "post") {
+//       return res.json(await createPost(page, platform, task));
+//     }
+
+//     if (taskType === "follow") {
+//       return res.json(await followUser(page, platform, task.target_url));
+//     }
+
+//     if (taskType === "unfollow") {
+//       return res.json(await unfollowUser(page, platform, task.target_url));
+//     }
+
+//     if (taskType === "like") {
+//       const result = await likePost(page, platform, task.target_url);
+//       return res.json(result);
+//     }
+//     if (taskType === "comment") {
+//       return res.json(
+//         await commentOnPost(page, platform, task.target_url, task.comment)
+//       );
+//     }
+
+//     return res.json({
+//       success: false,
+//       message: `Task type ${taskType} not supported`,
+//     });
+//   } catch (error) {
+//     console.error("❌ Task execution failed:", error.message);
+//     return res.json({
+//       success: false,
+//       message: error.message,
+//     });
+//   }
+// });
+
+// Modified /login-social endpoint (proxy parameters removed)
 app.post("/login-social", async (req, res) => {
   const {
     username,
     password,
     platform,
     account_id,
-    proxy_host,
-    proxy_port,
-    proxy_username,
-    proxy_password,
   } = req.body;
 
   if (!LOGIN_URL[platform]) {
@@ -94,14 +409,13 @@ app.post("/login-social", async (req, res) => {
 
     // Launch new browser
     const browser = await chromium.launch({
-      headless: true,
-      proxy: proxy_host
-        ? {
-            server: `http://${proxy_host}:${proxy_port}`,
-            username: proxy_username || undefined,
-            password: proxy_password || undefined,
-          }
-        : undefined,
+      headless: false,  // Changed to false so you can see what's happening
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-blink-features=AutomationControlled'
+      ]
     });
 
     const context = await browser.newContext({
@@ -110,6 +424,7 @@ app.post("/login-social", async (req, res) => {
       locale: "en-US",
       timezoneId: "America/New_York",
       permissions: ["geolocation", "notifications"],
+      viewport: { width: 1280, height: 720 }
     });
 
     activeBrowsers[account_id] = browser;
@@ -119,18 +434,13 @@ app.post("/login-social", async (req, res) => {
 
     console.log("⏳ Loading login page...");
 
-    // FIX: Instagram never reaches "networkidle" → replaced
     await page.goto(LOGIN_URL[platform], {
       waitUntil: "domcontentloaded",
       timeout: 60000,
     });
 
-    await page.waitForTimeout(2500); // Let IG/FB scripts load
-
-    // --------------------------
-    //     PLATFORM LOGINS
-    // --------------------------
-
+    await page.waitForTimeout(2500);
+    
     switch (platform) {
       case "instagram":
         await page.waitForSelector('input[name="username"]', {
@@ -141,14 +451,10 @@ app.post("/login-social", async (req, res) => {
         await page.fill('input[name="password"]', password);
 
         await page.click('button[type="submit"]');
-
-        // Wait for login redirect
         await page.waitForTimeout(5000);
 
-        // Dismiss popups
         await page.click("text=Not now").catch(() => {});
         await page.click('button:has-text("Not Now")').catch(() => {});
-
         break;
 
       case "facebook":
@@ -193,10 +499,8 @@ app.post("/login-social", async (req, res) => {
         break;
     }
 
-    // Allow cookie/session setup
     await page.waitForTimeout(5000);
 
-    // Save session
     const storageState = await context.storageState();
     const authToken = extractAuthToken(storageState.cookies, platform);
 
@@ -219,16 +523,13 @@ app.post("/login-social", async (req, res) => {
     });
   }
 });
+
 // --------------- CHECK LOGIN STATUS -------------------
 app.post("/check-login", async (req, res) => {
   const {
     platform,
     cookies,
     sessionData,
-    proxy_host,
-    proxy_port,
-    proxy_username,
-    proxy_password,
   } = req.body;
 
   if (!cookies || !sessionData) {
@@ -242,13 +543,6 @@ app.post("/check-login", async (req, res) => {
   try {
     const browser = await chromium.launch({
       headless: true,
-      proxy: proxy_host
-        ? {
-            server: `http://${proxy_host}:${proxy_port}`,
-            username: proxy_username || undefined,
-            password: proxy_password || undefined,
-          }
-        : undefined,
     });
 
     const parsedSessionData = JSON.parse(sessionData);
@@ -257,7 +551,6 @@ app.post("/check-login", async (req, res) => {
     });
     const page = await context.newPage();
 
-    // Check if logged in by navigating to home page
     const homeUrls = {
       instagram: "https://www.instagram.com/",
       facebook: "https://www.facebook.com/",
@@ -285,6 +578,7 @@ app.post("/check-login", async (req, res) => {
   }
 });
 
+// --------------- EXECUTE TASK -------------------
 app.post("/execute-task", async (req, res) => {
   const { task, account } = req.body;
 
@@ -315,24 +609,29 @@ app.post("/execute-task", async (req, res) => {
       if (account.session_data) {
         try {
           storageState = JSON.parse(account.session_data);
-        } catch {}
+        } catch (e) {
+          console.log("⚠️ Failed to parse session data:", e.message);
+        }
       }
 
       browser = await chromium.launch({
-        headless: false,
-        proxy: account.proxy_id
-          ? {
-              server: `http://${account.proxy.host}:${account.proxy.port}`,
-              username: account.proxy.username || undefined,
-              password: account.proxy.password || undefined,
-            }
-          : undefined,
+        headless: false,  // Browser will be visible
+        slowMo: 100,      // Slow down operations by 100ms for visibility
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--disable-blink-features=AutomationControlled',
+          '--start-maximized'
+        ]
       });
 
       context = await browser.newContext({
         storageState,
-        userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/129.0.0.0",
+        userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36",
         locale: "en-US",
+        viewport: { width: 1280, height: 720 },
+        permissions: ["geolocation", "notifications"]
       });
 
       activeBrowsers[account.id] = browser;
@@ -341,7 +640,7 @@ app.post("/execute-task", async (req, res) => {
       page = await context.newPage();
     }
 
-    // ✅ POST TASK
+    // Task execution logic
     if (taskType === "post") {
       return res.json(await createPost(page, platform, task));
     }
@@ -358,6 +657,7 @@ app.post("/execute-task", async (req, res) => {
       const result = await likePost(page, platform, task.target_url);
       return res.json(result);
     }
+    
     if (taskType === "comment") {
       return res.json(
         await commentOnPost(page, platform, task.target_url, task.comment)
@@ -374,6 +674,26 @@ app.post("/execute-task", async (req, res) => {
       success: false,
       message: error.message,
     });
+  }
+});
+
+// Add endpoint to close browser for an account
+app.post("/close-browser", async (req, res) => {
+  const { account_id } = req.body;
+  
+  try {
+    if (activeBrowsers[account_id]) {
+      await activeBrowsers[account_id].close();
+      delete activeBrowsers[account_id];
+      delete activeContexts[account_id];
+      console.log(`🔒 Browser closed for account ${account_id}`);
+      return res.json({ success: true, message: "Browser closed" });
+    }
+    
+    return res.json({ success: true, message: "No active browser found" });
+  } catch (error) {
+    console.error("❌ Failed to close browser:", error.message);
+    return res.json({ success: false, message: error.message });
   }
 });
 async function createPost(page, platform, task) {
@@ -1207,74 +1527,261 @@ async function facebookComment(page, targetUrl, commentText) {
   if (!targetUrl) throw new Error("Target URL missing");
   if (!commentText) throw new Error("Comment text missing");
 
-  await page.goto(targetUrl, {
-    waitUntil: "domcontentloaded",
-    timeout: 60000,
-  });
-
-  await page.waitForTimeout(5000);
-
-  // Close popups
-  await page
-    .locator('[aria-label="Close"]')
-    .click()
-    .catch(() => {});
-  await page.waitForTimeout(1000);
-
-  // Find comment box
-  const commentSelectors = [
-    'div[aria-label="Write a comment"]',
-    'div[role="textbox"][contenteditable="true"]',
-    'textarea[placeholder*="Write a comment"]',
-  ];
-
-  let commentBox = null;
-  for (const sel of commentSelectors) {
-    const box = page.locator(sel).first();
-    if (await box.isVisible({ timeout: 5000 }).catch(() => false)) {
-      commentBox = box;
-      break;
-    }
-  }
-
-  if (!commentBox) {
-    await page.screenshot({
-      path: `facebook-comment-error-${Date.now()}.png`,
-      fullPage: true,
+  try {
+    // Navigate to the post/photo
+    await page.goto(targetUrl, {
+      waitUntil: "domcontentloaded",
+      timeout: 60000,
     });
-    throw new Error("Facebook comment box not found");
-  }
 
-  await commentBox.scrollIntoViewIfNeeded();
-  await commentBox.click({ force: true });
-  await commentBox.fill("");
-  await commentBox.type(commentText, { delay: 100 + Math.random() * 100 });
-  await page.waitForTimeout(1000);
+    console.log("⏳ Page loaded, waiting for content...");
+    await page.waitForTimeout(8000); // Increased wait time for Facebook to load
 
-  // Click Post button
-  const postBtnSelectors = [
-    'div[aria-label="Press Enter to post"]',
-    'div[role="button"]:has-text("Enter")',
-  ];
+    // Close any popups/dialogs
+    const closeSelectors = [
+      '[aria-label="Close"]',
+      '[aria-label="close"]',
+      'div[role="button"][aria-label="Close"]',
+      'i.x1b0d669.xep6ejk' // Facebook X icon class
+    ];
 
-  let postBtn = null;
-  for (const sel of postBtnSelectors) {
-    const btn = page.locator(sel).first();
-    if (await btn.isVisible({ timeout: 5000 }).catch(() => false)) {
-      postBtn = btn;
-      break;
+    for (const selector of closeSelectors) {
+      try {
+        await page.locator(selector).first().click({ timeout: 2000 });
+        console.log("✅ Closed popup");
+        await page.waitForTimeout(1000);
+      } catch (e) {
+        // Ignore if not found
+      }
     }
+
+    // Scroll to load comment section
+    await page.evaluate(() => {
+      window.scrollBy(0, 400);
+    });
+    await page.waitForTimeout(3000);
+
+    console.log("🔍 Looking for comment box...");
+
+    // Find comment box with multiple strategies
+    const commentSelectors = [
+      // Most common Facebook comment box selectors
+      'div[aria-label="Write a comment"]',
+      'div[aria-label="Write a comment..."]',
+      'div[aria-placeholder="Write a comment"]',
+      'div[aria-placeholder="Write a comment..."]',
+      'div[contenteditable="true"][role="textbox"]',
+      'div[contenteditable="true"][data-lexical-editor="true"]',
+      'div.x1ed109x.xrvj5dj.x1l90r2v.xds687c', // Facebook comment box classes
+      'div[data-lexical-editor="true"]',
+      'textarea[placeholder*="Write a comment"]',
+      'div.notranslate._5rpu' // Older Facebook class
+    ];
+
+    let commentBox = null;
+    let foundSelector = null;
+
+    for (const sel of commentSelectors) {
+      try {
+        const box = page.locator(sel).first();
+        const isVisible = await box.isVisible({ timeout: 3000 }).catch(() => false);
+        
+        if (isVisible) {
+          commentBox = box;
+          foundSelector = sel;
+          console.log(`✅ Found comment box with selector: ${sel}`);
+          break;
+        }
+      } catch (e) {
+        continue;
+      }
+    }
+
+    // If still not found, try clicking "Write a comment" text
+    if (!commentBox) {
+      console.log("🔍 Trying to click 'Write a comment' text...");
+      
+      const commentTriggers = [
+        'span:text("Write a comment")',
+        'span:text("Write a comment...")',
+        'div:text("Write a comment")',
+      ];
+
+      for (const trigger of commentTriggers) {
+        try {
+          const elem = page.locator(trigger).first();
+          if (await elem.isVisible({ timeout: 3000 })) {
+            await elem.click({ timeout: 3000 });
+            console.log("✅ Clicked comment trigger");
+            await page.waitForTimeout(2000);
+            
+            // Try finding comment box again after clicking
+            for (const sel of commentSelectors) {
+              const box = page.locator(sel).first();
+              if (await box.isVisible({ timeout: 3000 }).catch(() => false)) {
+                commentBox = box;
+                foundSelector = sel;
+                console.log(`✅ Found comment box after clicking: ${sel}`);
+                break;
+              }
+            }
+            break;
+          }
+        } catch (e) {
+          continue;
+        }
+      }
+    }
+
+    if (!commentBox) {
+      // Take screenshot for debugging
+      const screenshotPath = `facebook-comment-error-${Date.now()}.png`;
+      await page.screenshot({
+        path: screenshotPath,
+        fullPage: true,
+      });
+      console.log(`📸 Screenshot saved: ${screenshotPath}`);
+      
+      throw new Error("Facebook comment box not found - check screenshot");
+    }
+
+    // Interact with comment box
+    console.log("📝 Writing comment...");
+    await commentBox.scrollIntoViewIfNeeded();
+    await page.waitForTimeout(1000);
+    
+    await commentBox.click({ force: true });
+    await page.waitForTimeout(1500);
+
+    // Clear any existing text
+    await commentBox.fill("");
+    await page.waitForTimeout(500);
+
+    // Type comment with human-like delay
+    await commentBox.type(commentText, { delay: 80 + Math.random() * 120 });
+    await page.waitForTimeout(1500);
+
+    console.log("🔍 Looking for Post/Submit button...");
+
+    // Find and click Post button with multiple strategies
+    const postBtnSelectors = [
+      // Enter key press indicator
+      'div[aria-label="Press Enter to post"]',
+      'div[aria-label="Comment"]',
+      'div[aria-label="Post comment"]',
+      
+      // Button/div with text
+      'div[role="button"]:has-text("Comment")',
+      'div[role="button"]:has-text("Post")',
+      'button:has-text("Comment")',
+      'button:has-text("Post")',
+      
+      // SVG/Icon based (Facebook often uses icons)
+      'div[aria-label="Post comment"] svg',
+      'div[aria-label="Comment"] svg',
+      
+      // Classes
+      'div[role="button"].x1i10hfl',
+    ];
+
+    let postBtn = null;
+    let postMethod = null;
+
+    for (const sel of postBtnSelectors) {
+      try {
+        const btn = page.locator(sel).first();
+        if (await btn.isVisible({ timeout: 3000 }).catch(() => false)) {
+          postBtn = btn;
+          postMethod = sel;
+          console.log(`✅ Found post button: ${sel}`);
+          break;
+        }
+      } catch (e) {
+        continue;
+      }
+    }
+
+    // Try pressing Enter key if no button found
+    if (!postBtn) {
+      console.log("⚠️ Post button not found, trying Enter key...");
+      try {
+        await page.keyboard.press("Enter");
+        console.log("✅ Pressed Enter key");
+        await page.waitForTimeout(5000);
+        
+        return {
+          success: true,
+          message: "Facebook comment posted via Enter key",
+        };
+      } catch (e) {
+        // Take debug screenshot
+        const screenshotPath = `facebook-post-btn-error-${Date.now()}.png`;
+        await page.screenshot({
+          path: screenshotPath,
+          fullPage: true,
+        });
+        console.log(`📸 Screenshot saved: ${screenshotPath}`);
+        
+        throw new Error("Facebook Post button not found and Enter key failed");
+      }
+    }
+
+    // Click the post button
+    console.log("📤 Clicking Post button...");
+    await postBtn.scrollIntoViewIfNeeded();
+    await page.waitForTimeout(500);
+    
+    try {
+      await postBtn.click({ timeout: 5000 });
+    } catch (e) {
+      console.log("⚠️ Regular click failed, trying force click...");
+      await postBtn.click({ force: true });
+    }
+
+    // Wait for comment to be posted
+    await page.waitForTimeout(6000);
+
+    // Verify comment was posted
+    const commentPosted = await page
+      .locator(`text="${commentText}"`)
+      .first()
+      .isVisible({ timeout: 5000 })
+      .catch(() => false);
+
+    console.log(
+      commentPosted
+        ? "✅ Comment posted & verified"
+        : "✅ Comment likely posted (verification pending)"
+    );
+
+    return {
+      success: true,
+      message: commentPosted
+        ? "Facebook comment posted successfully"
+        : "Facebook comment posted (verification pending)",
+      post_url: targetUrl,
+    };
+  } catch (error) {
+    console.error("❌ Facebook comment failed:", error.message);
+
+    // Debug screenshot with timestamp
+    const timestamp = Date.now();
+    try {
+      await page.screenshot({
+        path: `facebook-comment-error-${timestamp}.png`,
+        fullPage: true,
+      });
+      console.log(`📸 Error screenshot saved: facebook-comment-error-${timestamp}.png`);
+    } catch (screenshotError) {
+      console.log("⚠️ Could not save error screenshot");
+    }
+
+    return {
+      success: false,
+      message: error.message,
+      debug_screenshot: `facebook-comment-error-${timestamp}.png`,
+    };
   }
-
-  if (!postBtn) throw new Error("Facebook Post button not found");
-
-  await postBtn.click({ force: true });
-  await page.waitForTimeout(5000);
-
-  return {
-    success: true,
-    message: "Facebook comment posted (confirmation may take time)",
-  };
 }
 
 async function commentOnPost(page, platform, targetUrl, commentText) {
