@@ -1117,12 +1117,14 @@ async function createLinkedInPost(page, postContent) {
 // ==========================================
 // LIKE POST FUNCTION
 // ==========================================
-async function likePost(page, platform, targetUrl) {
-  console.log(`❤️ Liking post on ${platform}... new code`);
+// ==========================================
+// INSTAGRAM LIKE FUNCTION
+// ==========================================
+async function instagramLike(page, targetUrl) {
+  console.log("❤️ Liking Instagram post...");
 
   try {
     if (!targetUrl) throw new Error("Target URL missing");
-    if (platform !== "instagram") throw new Error("Platform not supported");
 
     const cleanUrl = targetUrl.split("?")[0];
 
@@ -1296,22 +1298,335 @@ async function likePost(page, platform, targetUrl) {
     if (!confirmed) {
       console.warn("⚠️ No red heart visible – like may still have worked");
       // Take debug screenshot
-      await page.screenshot({ path: "like-attempt.png", fullPage: false });
+      await page.screenshot({ 
+        path: `instagram-like-attempt-${Date.now()}.png`, 
+        fullPage: false 
+      });
       return {
         success: true,
         message: "Like attempted (no visual confirmation)",
       };
     }
 
-    console.log("❤️ Like successful & confirmed");
+    console.log("❤️ Instagram like successful & confirmed");
     return { success: true, message: "Post liked successfully" };
   } catch (error) {
-    console.error("❌ Like failed:", error.message);
+    console.error("❌ Instagram like failed:", error.message);
     // Debug screenshot
     try {
-      await page.screenshot({ path: "like-error.png", fullPage: false });
+      await page.screenshot({ 
+        path: `instagram-like-error-${Date.now()}.png`, 
+        fullPage: false 
+      });
     } catch {}
     return { success: false, message: error.message };
+  }
+}
+
+// ==========================================
+// FACEBOOK LIKE FUNCTION
+// ==========================================
+async function facebookLike(page, targetUrl) {
+  console.log("👍 Liking Facebook post...");
+
+  try {
+    if (!targetUrl) throw new Error("Target URL missing");
+
+    await page.goto(targetUrl, {
+      waitUntil: "domcontentloaded",
+      timeout: 60000,
+    });
+
+    console.log("⏳ Page loaded, waiting for content...");
+    await page.waitForTimeout(8000);
+
+    // Close any popups/dialogs
+    const closeSelectors = [
+      '[aria-label="Close"]',
+      '[aria-label="close"]',
+      'div[role="button"][aria-label="Close"]',
+    ];
+
+    for (const selector of closeSelectors) {
+      try {
+        await page.locator(selector).first().click({ timeout: 2000 });
+        console.log("✅ Closed popup");
+        await page.waitForTimeout(1000);
+      } catch (e) {
+        // Ignore if not found
+      }
+    }
+
+    // Scroll to load reactions
+    await page.evaluate(() => {
+      window.scrollBy(0, 300);
+    });
+    await page.waitForTimeout(3000);
+
+    console.log("🔍 Checking if already liked...");
+
+    // Check if already liked
+    const alreadyLiked = await page.evaluate(() => {
+      // Look for "Unlike" text or filled/active like button
+      const elements = document.querySelectorAll('[aria-label]');
+      
+      for (const elem of elements) {
+        const ariaLabel = elem.getAttribute('aria-label');
+        if (ariaLabel) {
+          const lowerLabel = ariaLabel.toLowerCase();
+          // Check for "Remove Like" or similar patterns
+          if (
+            lowerLabel.includes('remove like') ||
+            lowerLabel.includes('unlike') ||
+            lowerLabel === 'like: liked'
+          ) {
+            return true;
+          }
+        }
+      }
+
+      // Check for active/filled thumbs up icon
+      const svgs = document.querySelectorAll('svg');
+      for (const svg of svgs) {
+        const fill = svg.querySelector('path')?.getAttribute('fill');
+        const parentLabel = svg.closest('[aria-label]')?.getAttribute('aria-label');
+        
+        if (parentLabel && parentLabel.toLowerCase().includes('like')) {
+          // Blue fill indicates already liked
+          if (fill && (fill.includes('rgb(24, 119, 242)') || fill === '#1877F2')) {
+            return true;
+          }
+        }
+      }
+
+      return false;
+    });
+
+    if (alreadyLiked) {
+      console.log("💙 Already liked");
+      return { success: true, message: "Already liked" };
+    }
+
+    console.log("🔍 Looking for Like button...");
+
+    // Find Like button with multiple strategies
+    const likeSelectors = [
+      // Most common Facebook Like button selectors
+      '[aria-label="Like"]',
+      '[aria-label="like"]',
+      'div[aria-label="Like"][role="button"]',
+      'span[aria-label="Like"][role="button"]',
+      
+      // Text-based selectors
+      'div[role="button"]:has-text("Like")',
+      'span[role="button"]:has-text("Like")',
+      
+      // Reaction button (Facebook's main reaction element)
+      '[data-testid="reaction-button"]',
+      
+      // SVG parent with Like label
+      'svg[aria-label="Like"]',
+      
+      // Specific Facebook classes
+      'div.x1i10hfl[role="button"][tabindex="0"]',
+    ];
+
+    let likeButton = null;
+    let foundSelector = null;
+
+    for (const selector of likeSelectors) {
+      try {
+        const btn = page.locator(selector).first();
+        const isVisible = await btn.isVisible({ timeout: 3000 }).catch(() => false);
+        
+        if (isVisible) {
+          likeButton = btn;
+          foundSelector = selector;
+          console.log(`✅ Found Like button with selector: ${selector}`);
+          break;
+        }
+      } catch (e) {
+        continue;
+      }
+    }
+
+    // JavaScript evaluation fallback
+    if (!likeButton) {
+      console.log("🔍 Trying JavaScript evaluation...");
+      
+      const likeButtonFound = await page.evaluate(() => {
+        // Find elements with "Like" aria-label
+        const elements = document.querySelectorAll('[aria-label]');
+        
+        for (const elem of elements) {
+          const ariaLabel = elem.getAttribute('aria-label');
+          if (ariaLabel && ariaLabel.toLowerCase() === 'like') {
+            const role = elem.getAttribute('role');
+            const tag = elem.tagName.toLowerCase();
+            
+            if (
+              role === 'button' ||
+              tag === 'button' ||
+              (tag === 'div' && role === 'button') ||
+              (tag === 'span' && role === 'button')
+            ) {
+              elem.setAttribute('data-fb-like-button', 'true');
+              return true;
+            }
+          }
+        }
+        
+        return false;
+      });
+
+      if (likeButtonFound) {
+        likeButton = page.locator('[data-fb-like-button="true"]').first();
+        console.log("✅ Found Like button via JavaScript");
+      }
+    }
+
+    if (!likeButton) {
+      // Take screenshot for debugging
+      const screenshotPath = `facebook-like-error-${Date.now()}.png`;
+      await page.screenshot({
+        path: screenshotPath,
+        fullPage: true,
+      });
+      console.log(`📸 Screenshot saved: ${screenshotPath}`);
+      
+      throw new Error("Facebook Like button not found - check screenshot");
+    }
+
+    // Click the Like button
+    console.log("👍 Clicking Like button...");
+    
+    await likeButton.scrollIntoViewIfNeeded();
+    await page.waitForTimeout(500 + Math.random() * 500);
+    
+    try {
+      await likeButton.hover({ timeout: 5000 });
+      await page.waitForTimeout(300 + Math.random() * 400);
+      await likeButton.click({ timeout: 5000, delay: 100 });
+    } catch (e) {
+      console.log("⚠️ Regular click failed, trying force click...");
+      await likeButton.click({ force: true });
+    }
+
+    // Wait for reaction to register
+    await page.waitForTimeout(4000);
+
+    // Verify like was successful
+    const likeConfirmed = await page.evaluate(() => {
+      const elements = document.querySelectorAll('[aria-label]');
+      
+      for (const elem of elements) {
+        const ariaLabel = elem.getAttribute('aria-label');
+        if (ariaLabel) {
+          const lowerLabel = ariaLabel.toLowerCase();
+          if (
+            lowerLabel.includes('remove like') ||
+            lowerLabel.includes('unlike') ||
+            lowerLabel === 'like: liked'
+          ) {
+            return true;
+          }
+        }
+      }
+
+      // Check for blue/filled thumbs up
+      const svgs = document.querySelectorAll('svg');
+      for (const svg of svgs) {
+        const path = svg.querySelector('path');
+        if (path) {
+          const fill = path.getAttribute('fill');
+          if (fill && (fill.includes('rgb(24, 119, 242)') || fill === '#1877F2')) {
+            return true;
+          }
+        }
+      }
+
+      return false;
+    });
+
+    if (!likeConfirmed) {
+      console.warn("⚠️ Like confirmation not detected – but may have worked");
+      return {
+        success: true,
+        message: "Facebook like attempted (confirmation pending)",
+      };
+    }
+
+    console.log("👍 Facebook like successful & confirmed");
+    return { 
+      success: true, 
+      message: "Post liked successfully",
+      post_url: targetUrl 
+    };
+
+  } catch (error) {
+    console.error("❌ Facebook like failed:", error.message);
+
+    // Debug screenshot
+    const timestamp = Date.now();
+    try {
+      await page.screenshot({
+        path: `facebook-like-error-${timestamp}.png`,
+        fullPage: true,
+      });
+      console.log(`📸 Error screenshot saved: facebook-like-error-${timestamp}.png`);
+    } catch (screenshotError) {
+      console.log("⚠️ Could not save error screenshot");
+    }
+
+    return {
+      success: false,
+      message: error.message,
+      debug_screenshot: `facebook-like-error-${timestamp}.png`,
+    };
+  }
+}
+
+// ==========================================
+// MAIN LIKE POST FUNCTION
+// ==========================================
+async function likePost(page, platform, targetUrl) {
+  console.log(`❤️ Liking post on ${platform}...`);
+
+  try {
+    if (!targetUrl) throw new Error("Target URL missing");
+
+    if (platform === "instagram") {
+      return await instagramLike(page, targetUrl);
+    }
+
+    if (platform === "facebook") {
+      return await facebookLike(page, targetUrl);
+    }
+
+    // Add more platforms here as needed
+    // if (platform === "twitter") {
+    //   return await twitterLike(page, targetUrl);
+    // }
+
+    return {
+      success: false,
+      message: `Like not supported for platform: ${platform}`,
+    };
+  } catch (error) {
+    console.error(`❌ Like failed on ${platform}:`, error.message);
+    
+    // Debug screenshot
+    try {
+      await page.screenshot({
+        path: `${platform}-like-error-${Date.now()}.png`,
+        fullPage: false,
+      });
+    } catch {}
+    
+    return {
+      success: false,
+      message: error.message,
+    };
   }
 }
 
