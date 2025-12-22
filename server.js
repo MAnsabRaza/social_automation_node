@@ -2095,9 +2095,6 @@ async function createLinkedInPost(page, postContent) {
 // ==========================================
 // LIKE POST FUNCTION
 // ==========================================
-// ==========================================
-// INSTAGRAM LIKE FUNCTION
-// ==========================================
 async function instagramLike(page, targetUrl) {
   console.log("❤️ Liking Instagram post...");
 
@@ -2823,6 +2820,304 @@ async function twitterLike(page, targetUrl) {
   }
 }
 
+async function tiktokLike(page, targetUrl) {
+  console.log("❤️ Liking TikTok post...");
+
+  try {
+    if (!targetUrl) throw new Error("Target URL missing");
+
+    await page.goto(targetUrl, {
+      waitUntil: "domcontentloaded",
+      timeout: 60000,
+    });
+
+    console.log("⏳ TikTok video loaded, waiting for content...");
+    await page.waitForTimeout(6000);
+
+    // Scroll to ensure video actions are loaded
+    await page.evaluate(() => {
+      window.scrollBy(0, 300);
+    });
+    await page.waitForTimeout(2000);
+
+    console.log("🔍 Searching for like button...");
+
+    // Find and analyze the like button
+    const buttonInfo = await page.evaluate(() => {
+      // Strategy 1: Find button with heart SVG and like count
+      const allButtons = document.querySelectorAll('button');
+      
+      for (const btn of allButtons) {
+        // Check if button contains an SVG (heart icon)
+        const svg = btn.querySelector('svg');
+        if (!svg) continue;
+
+        // Check if this button is near or contains like count text
+        const buttonText = btn.textContent || "";
+        const hasLikeCount = /[\d.]+[KMB]?/.test(buttonText);
+        
+        // Check aria-label
+        const ariaLabel = btn.getAttribute("aria-label") || "";
+        
+        // Log what we found
+        console.log("Button found:", {
+          ariaLabel: ariaLabel,
+          text: buttonText,
+          hasLikeCount: hasLikeCount,
+          html: btn.outerHTML.substring(0, 200)
+        });
+
+        // Check if it's a like button (has heart SVG + like count OR has "like" in aria-label)
+        if (hasLikeCount || ariaLabel.toLowerCase().includes("like")) {
+          // Check if already liked (red heart)
+          const paths = svg.querySelectorAll('path');
+          let isLiked = false;
+          
+          for (const path of paths) {
+            const fill = path.getAttribute('fill') || '';
+            const style = window.getComputedStyle(path);
+            const computedFill = style.fill || '';
+            
+            // Check for red/pink color
+            if (
+              fill.includes('254') || 
+              fill.includes('#FE2C55') || 
+              fill.includes('#fe2c55') ||
+              computedFill.includes('254, 44, 85')
+            ) {
+              isLiked = true;
+              break;
+            }
+          }
+
+          // Also check aria-label for "unlike"
+          if (ariaLabel.toLowerCase().includes('unlike')) {
+            isLiked = true;
+          }
+
+          console.log("Like button status:", { isLiked, ariaLabel });
+
+          if (isLiked) {
+            return { found: true, alreadyLiked: true };
+          }
+
+          // Mark button for clicking
+          btn.setAttribute('data-like-target', 'true');
+          return { found: true, alreadyLiked: false };
+        }
+      }
+
+      // Strategy 2: Look for specific TikTok button structure
+      // TikTok often uses a button with data-e2e attribute
+      const likeButton = document.querySelector('[data-e2e*="like"]');
+      if (likeButton) {
+        console.log("Found button via data-e2e:", likeButton.outerHTML.substring(0, 200));
+        likeButton.setAttribute('data-like-target', 'true');
+        
+        // Check if liked
+        const svg = likeButton.querySelector('svg path');
+        const isLiked = svg && (
+          (svg.getAttribute('fill') || '').includes('254') ||
+          (window.getComputedStyle(svg).fill || '').includes('254')
+        );
+        
+        return { found: true, alreadyLiked: isLiked };
+      }
+
+      // Strategy 3: Find by aria-label containing "like"
+      const buttonByAria = Array.from(allButtons).find(btn => {
+        const label = btn.getAttribute('aria-label') || '';
+        return label.toLowerCase().includes('like');
+      });
+
+      if (buttonByAria) {
+        console.log("Found button via aria-label:", buttonByAria.getAttribute('aria-label'));
+        buttonByAria.setAttribute('data-like-target', 'true');
+        
+        const isLiked = (buttonByAria.getAttribute('aria-label') || '').toLowerCase().includes('unlike');
+        return { found: true, alreadyLiked: isLiked };
+      }
+
+      return { found: false, alreadyLiked: false };
+    });
+
+    console.log("Button search result:", buttonInfo);
+
+    if (buttonInfo.alreadyLiked) {
+      console.log("💗 TikTok video already liked");
+      return {
+        success: true,
+        message: "TikTok video already liked",
+        alreadyLiked: true,
+        video_url: targetUrl,
+      };
+    }
+
+    if (!buttonInfo.found) {
+      console.log("❌ Like button not found");
+
+      // Take debug screenshot
+      const screenshotPath = `tiktok-no-like-btn-${Date.now()}.png`;
+      await page.screenshot({
+        path: screenshotPath,
+        fullPage: true,
+      });
+      console.log(`📸 Screenshot saved: ${screenshotPath}`);
+
+      // Log all buttons for debugging
+      await page.evaluate(() => {
+        console.log("=== ALL BUTTONS ON PAGE ===");
+        const allBtns = document.querySelectorAll('button');
+        allBtns.forEach((btn, i) => {
+          console.log(`Button ${i}:`, {
+            ariaLabel: btn.getAttribute('aria-label'),
+            dataE2e: btn.getAttribute('data-e2e'),
+            text: btn.textContent.substring(0, 50),
+            hasSVG: !!btn.querySelector('svg')
+          });
+        });
+      });
+
+      throw new Error("TikTok Like button not found - check screenshot and console logs");
+    }
+
+    console.log("✅ Like button found! Attempting to click...");
+
+    // Wait a bit before clicking
+    await page.waitForTimeout(1000);
+
+    // Try multiple click strategies
+    let clickSuccess = false;
+
+    // Strategy 1: Click using locator
+    try {
+      const likeBtn = page.locator('[data-like-target="true"]').first();
+      await likeBtn.scrollIntoViewIfNeeded();
+      await page.waitForTimeout(500);
+      await likeBtn.click({ timeout: 5000 });
+      clickSuccess = true;
+      console.log("✅ Clicked via locator");
+    } catch (e) {
+      console.log("⚠️ Locator click failed:", e.message);
+    }
+
+    // Strategy 2: JavaScript click
+    if (!clickSuccess) {
+      try {
+        await page.evaluate(() => {
+          const btn = document.querySelector('[data-like-target="true"]');
+          if (btn) {
+            btn.click();
+            return true;
+          }
+          throw new Error("Button not found in DOM");
+        });
+        clickSuccess = true;
+        console.log("✅ Clicked via JavaScript");
+      } catch (e) {
+        console.log("⚠️ JS click failed:", e.message);
+      }
+    }
+
+    // Strategy 3: Force click
+    if (!clickSuccess) {
+      try {
+        const likeBtn = page.locator('[data-like-target="true"]').first();
+        await likeBtn.click({ force: true, timeout: 5000 });
+        clickSuccess = true;
+        console.log("✅ Clicked via force");
+      } catch (e) {
+        console.log("⚠️ Force click failed:", e.message);
+      }
+    }
+
+    if (!clickSuccess) {
+      throw new Error("Failed to click like button with all strategies");
+    }
+
+    // Wait for like animation
+    console.log("⏳ Waiting for like to register...");
+    await page.waitForTimeout(3000);
+
+    // Verify like was successful
+    const verified = await page.evaluate(() => {
+      const allButtons = document.querySelectorAll('button');
+      
+      for (const btn of allButtons) {
+        const ariaLabel = btn.getAttribute('aria-label') || '';
+        
+        // Check for "unlike" in aria-label
+        if (ariaLabel.toLowerCase().includes('unlike')) {
+          return true;
+        }
+
+        // Check for red heart
+        const svg = btn.querySelector('svg');
+        if (svg) {
+          const paths = svg.querySelectorAll('path');
+          for (const path of paths) {
+            const fill = path.getAttribute('fill') || '';
+            const computedFill = window.getComputedStyle(path).fill || '';
+            
+            if (
+              fill.includes('254') || 
+              fill.includes('#FE2C55') ||
+              computedFill.includes('254, 44, 85')
+            ) {
+              return true;
+            }
+          }
+        }
+      }
+      
+      return false;
+    });
+
+    if (verified) {
+      console.log("❤️ Like confirmed!");
+      return {
+        success: true,
+        message: "TikTok video liked successfully",
+        confirmed: true,
+        video_url: targetUrl,
+      };
+    } else {
+      console.warn("⚠️ Like clicked but verification failed");
+      
+      // Screenshot for debugging
+      await page.screenshot({
+        path: `tiktok-like-unconfirmed-${Date.now()}.png`,
+      });
+
+      return {
+        success: true,
+        message: "Like button clicked (verification pending)",
+        confirmed: false,
+        video_url: targetUrl,
+      };
+    }
+
+  } catch (error) {
+    console.error("❌ TikTok like error:", error.message);
+
+    // Debug screenshot
+    const timestamp = Date.now();
+    try {
+      await page.screenshot({
+        path: `tiktok-like-error-${timestamp}.png`,
+        fullPage: true,
+      });
+      console.log(`📸 Error screenshot: tiktok-like-error-${timestamp}.png`);
+    } catch {}
+
+    return {
+      success: false,
+      message: error.message,
+      video_url: targetUrl,
+    };
+  }
+}
+
 async function likePost(page, platform, targetUrl) {
   console.log(`❤️ Liking post on ${platform}...`);
 
@@ -2836,8 +3131,13 @@ async function likePost(page, platform, targetUrl) {
     if (platform === "facebook") {
       return await facebookLike(page, targetUrl);
     }
+
     if (platform === "twitter") {
       return await twitterLike(page, targetUrl);
+    }
+
+    if (platform === "tiktok") {
+      return await tiktokLike(page, targetUrl);
     }
 
     return {
@@ -2861,6 +3161,7 @@ async function likePost(page, platform, targetUrl) {
     };
   }
 }
+
 
 // ==========================================
 // COMMENT FUNCTION
@@ -3768,31 +4069,355 @@ async function twitterComment(page, targetUrl, commentText) {
     };
   }
 }
+async function tiktokComment(page, targetUrl, commentText) {
+  console.log("🎵 Commenting on TikTok...");
 
+  if (!targetUrl) throw new Error("Target URL missing");
+  if (!commentText) throw new Error("Comment text missing");
+
+  try {
+    // Navigate to the TikTok video
+    await page.goto(targetUrl, {
+      waitUntil: "domcontentloaded",
+      timeout: 60000,
+    });
+
+    console.log("⏳ TikTok video loaded, waiting for content...");
+    await page.waitForTimeout(5000);
+
+    // Scroll to ensure comment section is loaded
+    console.log("📜 Scrolling to load comment area...");
+    await page.evaluate(() => {
+      window.scrollBy(0, 400);
+    });
+    await page.waitForTimeout(2000);
+
+    // STEP 1: Find and click the comment icon to open comment box
+    console.log("🔍 Looking for comment icon...");
+    
+    const commentIconFound = await page.evaluate(() => {
+      const allButtons = document.querySelectorAll('button, span[role="button"]');
+      
+      for (const btn of allButtons) {
+        const ariaLabel = btn.getAttribute('aria-label') || '';
+        const dataE2e = btn.getAttribute('data-e2e') || '';
+        
+        // Look for comment icon by aria-label or data-e2e
+        if (
+          ariaLabel.toLowerCase().includes('comment') ||
+          dataE2e.includes('comment') ||
+          dataE2e.includes('browse-comment')
+        ) {
+          console.log("Found comment icon:", { ariaLabel, dataE2e });
+          btn.setAttribute('data-comment-icon', 'true');
+          btn.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          return true;
+        }
+        
+        // Also check if button contains comment count and SVG (comment icon)
+        const svg = btn.querySelector('svg');
+        const text = btn.textContent || '';
+        
+        // Comment counts typically show like "58.7K"
+        if (svg && /[\d.]+[KMB]/.test(text)) {
+          // Check if this might be comment icon (not like icon)
+          // Comment icon is typically a speech bubble
+          const pathD = svg.querySelector('path')?.getAttribute('d') || '';
+          
+          // Speech bubble path typically contains curves (C or c commands)
+          if (pathD.includes('C') || pathD.includes('c')) {
+            console.log("Found comment icon via SVG pattern");
+            btn.setAttribute('data-comment-icon', 'true');
+            btn.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            return true;
+          }
+        }
+      }
+      
+      return false;
+    });
+
+    if (!commentIconFound) {
+      console.log("❌ Comment icon not found");
+      const screenshotPath = `tiktok-no-comment-icon-${Date.now()}.png`;
+      await page.screenshot({
+        path: screenshotPath,
+        fullPage: true,
+      });
+      console.log(`📸 Screenshot saved: ${screenshotPath}`);
+      throw new Error("Comment icon not found on page");
+    }
+
+    console.log("✅ Found comment icon, clicking to open comment box...");
+    await page.waitForTimeout(800);
+
+    // Click the comment icon
+    let clickSuccess = false;
+
+    // Try clicking with locator
+    try {
+      const commentIcon = page.locator('[data-comment-icon="true"]').first();
+      await commentIcon.click({ timeout: 5000 });
+      clickSuccess = true;
+      console.log("✅ Clicked comment icon (locator)");
+    } catch (e) {
+      console.log("⚠️ Locator click failed, trying JS...");
+    }
+
+    // Try JavaScript click
+    if (!clickSuccess) {
+      try {
+        await page.evaluate(() => {
+          const icon = document.querySelector('[data-comment-icon="true"]');
+          if (icon) {
+            icon.click();
+          }
+        });
+        clickSuccess = true;
+        console.log("✅ Clicked comment icon (JavaScript)");
+      } catch (e) {
+        console.log("⚠️ JS click failed");
+      }
+    }
+
+    if (!clickSuccess) {
+      throw new Error("Failed to click comment icon");
+    }
+
+    // Wait for comment box to appear
+    console.log("⏳ Waiting for comment box to appear...");
+    await page.waitForTimeout(3000);
+
+    // STEP 2: Find the comment input box
+    console.log("🔍 Looking for comment input box...");
+    
+    const commentBoxFound = await page.evaluate(() => {
+      // Look for contenteditable divs
+      const editableDivs = document.querySelectorAll('div[contenteditable="true"], div[contenteditable="plaintext-only"]');
+      
+      console.log(`Found ${editableDivs.length} editable divs`);
+      
+      for (const div of editableDivs) {
+        const placeholder = div.getAttribute('data-placeholder') || div.getAttribute('placeholder') || '';
+        const rect = div.getBoundingClientRect();
+        const isVisible = rect.width > 0 && rect.height > 0;
+        
+        console.log("Checking div:", { placeholder, isVisible, width: rect.width, height: rect.height });
+        
+        // Check if it's a comment box
+        if (isVisible) {
+          console.log("Found visible contenteditable div");
+          div.setAttribute('data-comment-box', 'true');
+          div.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          return true;
+        }
+      }
+      
+      // Fallback: look for textarea
+      const textareas = document.querySelectorAll('textarea');
+      for (const textarea of textareas) {
+        const rect = textarea.getBoundingClientRect();
+        if (rect.width > 0 && rect.height > 0) {
+          textarea.setAttribute('data-comment-box', 'true');
+          textarea.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          return true;
+        }
+      }
+      
+      return false;
+    });
+
+    if (!commentBoxFound) {
+      const screenshotPath = `tiktok-no-comment-box-${Date.now()}.png`;
+      await page.screenshot({
+        path: screenshotPath,
+        fullPage: true,
+      });
+      console.log(`📸 Screenshot saved: ${screenshotPath}`);
+      throw new Error("Comment input box not found after clicking icon");
+    }
+
+    console.log("✅ Found comment box");
+    await page.waitForTimeout(1000);
+
+    // STEP 3: Focus and type in comment box
+    console.log("📝 Focusing on comment box...");
+    
+    await page.evaluate(() => {
+      const box = document.querySelector('[data-comment-box="true"]');
+      if (box) {
+        box.click();
+        box.focus();
+      }
+    });
+
+    await page.waitForTimeout(1000);
+
+    // Type the comment using keyboard simulation (more reliable)
+    console.log(`⌨️ Typing comment: "${commentText}"`);
+    
+    const commentBox = page.locator('[data-comment-box="true"]').first();
+    await commentBox.click();
+    await page.waitForTimeout(500);
+    
+    // Type the comment character by character for more natural input
+    await commentBox.type(commentText, { delay: 50 });
+    
+    console.log("✅ Comment typed");
+    await page.waitForTimeout(2000);
+
+    // STEP 4: Find and click Post button
+    console.log("🔍 Looking for Post button...");
+    
+    const postBtnFound = await page.evaluate(() => {
+      const buttons = document.querySelectorAll('button, div[role="button"]');
+      
+      for (const btn of buttons) {
+        const text = btn.textContent?.trim() || '';
+        const dataE2e = btn.getAttribute('data-e2e') || '';
+        const ariaLabel = btn.getAttribute('aria-label') || '';
+        const rect = btn.getBoundingClientRect();
+        const isVisible = rect.width > 0 && rect.height > 0;
+        
+        console.log("Checking button:", { text, dataE2e, ariaLabel, isVisible });
+        
+        // Look for Post button
+        if (isVisible && (
+          text.toLowerCase() === 'post' ||
+          text.toLowerCase() === 'comment' ||
+          dataE2e === 'comment-post' ||
+          ariaLabel.toLowerCase().includes('post')
+        )) {
+          console.log("Found Post button!");
+          btn.setAttribute('data-post-btn', 'true');
+          return true;
+        }
+      }
+      
+      return false;
+    });
+
+    if (!postBtnFound) {
+      const screenshotPath = `tiktok-no-post-btn-${Date.now()}.png`;
+      await page.screenshot({
+        path: screenshotPath,
+        fullPage: true,
+      });
+      console.log(`📸 Screenshot saved: ${screenshotPath}`);
+      throw new Error("Post button not found");
+    }
+
+    console.log("✅ Found Post button, clicking...");
+    await page.waitForTimeout(500);
+
+    // Click Post button
+    let postClickSuccess = false;
+
+    try {
+      const postBtn = page.locator('[data-post-btn="true"]').first();
+      await postBtn.click({ timeout: 5000 });
+      postClickSuccess = true;
+      console.log("✅ Clicked Post button (locator)");
+    } catch (e) {
+      console.log("⚠️ Locator click failed, trying JS...");
+    }
+
+    if (!postClickSuccess) {
+      try {
+        await page.evaluate(() => {
+          const btn = document.querySelector('[data-post-btn="true"]');
+          if (btn) {
+            btn.click();
+          }
+        });
+        postClickSuccess = true;
+        console.log("✅ Clicked Post button (JavaScript)");
+      } catch (e) {
+        console.log("⚠️ JS click failed");
+      }
+    }
+
+    if (!postClickSuccess) {
+      throw new Error("Failed to click Post button");
+    }
+
+    console.log("⏳ Waiting for comment to post...");
+    await page.waitForTimeout(4000);
+
+    // Verify comment was posted
+    const verified = await page.evaluate((text) => {
+      const bodyText = document.body.innerText;
+      return bodyText.includes(text);
+    }, commentText);
+
+    console.log("✅ TikTok comment posted successfully!");
+    
+    return {
+      success: true,
+      message: "TikTok comment posted successfully",
+      verified: verified,
+      video_url: targetUrl,
+      comment: commentText,
+    };
+
+  } catch (error) {
+    console.error("❌ TikTok comment failed:", error.message);
+
+    const timestamp = Date.now();
+    try {
+      await page.screenshot({
+        path: `tiktok-comment-error-${timestamp}.png`,
+        fullPage: true,
+      });
+      console.log(`📸 Error screenshot saved: tiktok-comment-error-${timestamp}.png`);
+    } catch (e) {
+      console.log("⚠️ Could not save screenshot");
+    }
+
+    return {
+      success: false,
+      message: error.message,
+      video_url: targetUrl,
+    };
+  }
+}
+
+// Main function to handle all platforms
 async function commentOnPost(page, platform, targetUrl, commentText) {
   try {
+    if (platform === "tiktok") {
+      return await tiktokComment(page, targetUrl, commentText);
+    }
+    if (platform === "twitter") {
+      return await twitterComment(page, targetUrl, commentText);
+    }
     if (platform === "instagram") {
       return await instagramComment(page, targetUrl, commentText);
     }
     if (platform === "facebook") {
       return await facebookComment(page, targetUrl, commentText);
     }
-    if (platform === "twitter") {
-      return await twitterComment(page, targetUrl, commentText);
-    }
+    
     return {
       success: false,
       message: `Commenting not supported on ${platform}`,
     };
   } catch (error) {
     console.error("❌ Comment failed:", error.message);
-    await page
-      .screenshot({
+    
+    try {
+      await page.screenshot({
         path: `${platform}-comment-error-${Date.now()}.png`,
         fullPage: true,
-      })
-      .catch(() => {});
-    return { success: false, message: error.message };
+      });
+    } catch (e) {
+      // Ignore screenshot errors
+    }
+    
+    return { 
+      success: false, 
+      message: error.message 
+    };
   }
 }
 
@@ -4400,25 +5025,279 @@ async function twitterFollow(page, targetUrl) {
     };
   }
 }
+
+async function tiktokFollow(page, targetUrl) {
+  console.log("🎵 Processing TikTok follow...");
+
+  try {
+    if (!targetUrl) throw new Error("Target URL missing");
+
+    // Navigate to the TikTok profile
+    await page.goto(targetUrl, {
+      waitUntil: "domcontentloaded",
+      timeout: 60000,
+    });
+
+    console.log("⏳ TikTok profile loaded, waiting for content...");
+    await page.waitForTimeout(5000);
+
+    // Scroll to ensure profile actions are loaded
+    await page.evaluate(() => {
+      window.scrollBy(0, 200);
+    });
+    await page.waitForTimeout(2000);
+
+    console.log("🔍 Looking for Follow button...");
+
+    // Try multiple selector strategies to find the Follow button
+    const followSelectors = [
+      'button:has-text("Follow")',
+      'button[data-e2e="follow-button"]',
+      'button[data-e2e="profile-follow-button"]',
+    ];
+
+    let followButton = null;
+    let buttonFound = false;
+
+    // Try each selector
+    for (const selector of followSelectors) {
+      try {
+        const btn = page.locator(selector).first();
+        const isVisible = await btn.isVisible({ timeout: 3000 });
+        
+        if (isVisible) {
+          const buttonText = await btn.textContent();
+          console.log(`Found button with selector: ${selector}, Text: "${buttonText}"`);
+          
+          // Make sure it's "Follow" and NOT "Following"
+          if (buttonText && buttonText.trim() === "Follow") {
+            followButton = btn;
+            buttonFound = true;
+            console.log("✅ Valid Follow button found");
+            break;
+          } else if (buttonText && buttonText.trim() === "Following") {
+            console.log("ℹ️ User is already following this account");
+            return {
+              success: true,
+              message: "Already following this user",
+              alreadyFollowing: true,
+            };
+          }
+        }
+      } catch (e) {
+        console.log(`Selector ${selector} not found, trying next...`);
+        continue;
+      }
+    }
+
+    // If not found by selectors, try finding by text content
+    if (!buttonFound) {
+      console.log("🔍 Trying to find button by searching all buttons...");
+      
+      const buttonResult = await page.evaluate(() => {
+        const allButtons = Array.from(document.querySelectorAll('button'));
+        
+        for (const btn of allButtons) {
+          const text = btn.textContent?.trim() || "";
+          
+          console.log(`Checking button: "${text}"`);
+          
+          // Check for exact "Following" first
+          if (text === "Following") {
+            return { found: true, isFollowing: true, buttonText: text };
+          }
+          
+          // Check for exact "Follow"
+          if (text === "Follow") {
+            btn.setAttribute("data-tiktok-follow-btn", "true");
+            return { found: true, isFollowing: false, buttonText: text };
+          }
+        }
+        
+        return { found: false, isFollowing: false, buttonText: null };
+      });
+
+      console.log("Button search result:", buttonResult);
+
+      if (buttonResult.isFollowing) {
+        console.log("ℹ️ User is already following this account");
+        return {
+          success: true,
+          message: "Already following this user",
+          alreadyFollowing: true,
+        };
+      }
+
+      if (buttonResult.found && !buttonResult.isFollowing) {
+        followButton = page.locator('[data-tiktok-follow-btn="true"]').first();
+        buttonFound = true;
+        console.log(`✅ Follow button found with text: "${buttonResult.buttonText}"`);
+      }
+    }
+
+    if (!buttonFound) {
+      console.log("❌ Follow button not found on page");
+      
+      const screenshotPath = `tiktok-no-follow-btn-${Date.now()}.png`;
+      await page.screenshot({
+        path: screenshotPath,
+        fullPage: true,
+      });
+      console.log(`📸 Screenshot saved: ${screenshotPath}`);
+
+      throw new Error("TikTok Follow button not found");
+    }
+
+    // Now click the Follow button
+    console.log("🖱️ Attempting to click Follow button...");
+
+    // Scroll button into view
+    await followButton.scrollIntoViewIfNeeded();
+    await page.waitForTimeout(1000);
+
+    let clickSuccessful = false;
+
+    // Strategy 1: Normal click
+    try {
+      await followButton.click({ timeout: 5000 });
+      clickSuccessful = true;
+      console.log("✅ Clicked Follow button (normal click)");
+    } catch (e) {
+      console.log("⚠️ Normal click failed, trying force click...");
+    }
+
+    // Strategy 2: Force click
+    if (!clickSuccessful) {
+      try {
+        await followButton.click({ force: true, timeout: 5000 });
+        clickSuccessful = true;
+        console.log("✅ Clicked Follow button (force click)");
+      } catch (e) {
+        console.log("⚠️ Force click failed, trying JavaScript click...");
+      }
+    }
+
+    // Strategy 3: JavaScript click
+    if (!clickSuccessful) {
+      try {
+        await page.evaluate(() => {
+          const btn = document.querySelector('[data-tiktok-follow-btn="true"]');
+          if (btn) {
+            btn.click();
+            return true;
+          }
+          // Fallback: find any button with "Follow" text
+          const allButtons = Array.from(document.querySelectorAll('button'));
+          for (const button of allButtons) {
+            if (button.textContent?.trim() === "Follow") {
+              button.click();
+              return true;
+            }
+          }
+          return false;
+        });
+        clickSuccessful = true;
+        console.log("✅ Clicked Follow button (JavaScript click)");
+      } catch (e) {
+        console.log("❌ JavaScript click failed:", e.message);
+      }
+    }
+
+    if (!clickSuccessful) {
+      throw new Error("Failed to click Follow button after all attempts");
+    }
+
+    // Wait for the action to complete
+    console.log("⏳ Waiting for follow action to complete...");
+    await page.waitForTimeout(5000);
+
+    // Verify the follow was successful
+    console.log("🔍 Verifying follow status...");
+
+    const followConfirmed = await page.evaluate(() => {
+      const allButtons = Array.from(document.querySelectorAll('button'));
+      
+      for (const btn of allButtons) {
+        const text = btn.textContent?.trim() || "";
+        
+        // Check if button now shows "Following"
+        if (text === "Following") {
+          console.log("✅ Follow confirmed - button shows: Following");
+          return true;
+        }
+      }
+      
+      return false;
+    });
+
+    if (followConfirmed) {
+      console.log("✅ TikTok follow successful and confirmed");
+      return {
+        success: true,
+        message: "User followed successfully",
+        confirmed: true,
+        profile_url: targetUrl,
+      };
+    } else {
+      console.log("⚠️ Follow button clicked but confirmation not detected yet");
+      
+      // Take screenshot for debugging
+      const screenshotPath = `tiktok-follow-pending-${Date.now()}.png`;
+      await page.screenshot({
+        path: screenshotPath,
+        fullPage: true,
+      });
+      console.log(`📸 Screenshot saved: ${screenshotPath}`);
+
+      return {
+        success: true,
+        message: "Follow button clicked successfully",
+        confirmed: false,
+        profile_url: targetUrl,
+        note: "Button was clicked. Follow may take a moment to register.",
+      };
+    }
+
+  } catch (error) {
+    console.error("❌ TikTok follow failed:", error.message);
+
+    const timestamp = Date.now();
+    try {
+      await page.screenshot({
+        path: `tiktok-follow-error-${timestamp}.png`,
+        fullPage: true,
+      });
+      console.log(`📸 Error screenshot saved: tiktok-follow-error-${timestamp}.png`);
+    } catch (screenshotError) {
+      console.log("⚠️ Could not save error screenshot");
+    }
+
+    return {
+      success: false,
+      message: error.message,
+      debug_screenshot: `tiktok-follow-error-${timestamp}.png`,
+      profile_url: targetUrl,
+    };
+  }
+}
+
 async function followUser(page, platform, targetUrl) {
   console.log(`👤 Following user on ${platform}...`);
 
   try {
     if (platform === "instagram") {
-      await instagramFollow(page, targetUrl);
+      return await instagramFollow(page, targetUrl);
     } else if (platform === "facebook") {
-      await facebookFollow(page, targetUrl);
+      return await facebookFollow(page, targetUrl);
     } else if (platform === "twitter") {
-      await twitterFollow(page, targetUrl);
+      return await twitterFollow(page, targetUrl);
+    } else if (platform === "tiktok") {
+      return await tiktokFollow(page, targetUrl);
     } else if (platform === "linkedin") {
       return await linkedinFollow(page, targetUrl);
     } else {
       throw new Error(`Platform ${platform} not supported`);
     }
-
-    await page.waitForTimeout(3000);
-
-    return { success: true, message: "User followed successfully" };
   } catch (error) {
     console.error("❌ Follow failed:", error.message);
     return { success: false, message: error.message };
@@ -4868,6 +5747,146 @@ async function twitterUnfollow(page, targetUrl) {
   }
 }
 
+async function tiktokUnfollow(page, targetUrl) {
+  console.log("🎵 Processing TikTok unfollow...");
+
+  try {
+    if (!targetUrl) throw new Error("Target URL missing");
+
+    // Navigate to the TikTok profile
+    await page.goto(targetUrl, {
+      waitUntil: "domcontentloaded",
+      timeout: 60000,
+    });
+
+    console.log("⏳ TikTok profile loaded, waiting for content...");
+    await page.waitForTimeout(3000);
+
+    console.log("🔍 Looking for Following button...");
+
+    // Click the "Following" button
+    const clickResult = await page.evaluate(() => {
+      const allButtons = Array.from(document.querySelectorAll('button'));
+      
+      for (const btn of allButtons) {
+        const text = btn.textContent?.trim() || "";
+        
+        // Look for "Following" button (contains the text)
+        if (text.includes("Following")) {
+          console.log("✅ Found Following button, clicking...");
+          btn.click();
+          return { success: true, found: true };
+        }
+      }
+      
+      // Check if already showing "Follow" (not following)
+      for (const btn of allButtons) {
+        const text = btn.textContent?.trim() || "";
+        if (text === "Follow") {
+          console.log("ℹ️ Button shows 'Follow' - user not following");
+          return { success: false, found: true, notFollowing: true };
+        }
+      }
+      
+      return { success: false, found: false };
+    });
+
+    console.log("Click result:", clickResult);
+
+    if (clickResult.notFollowing) {
+      console.log("ℹ️ User is not following this account");
+      return {
+        success: true,
+        message: "User is not following this account",
+        alreadyUnfollowed: true,
+      };
+    }
+
+    if (!clickResult.found || !clickResult.success) {
+      throw new Error("Following button not found or click failed");
+    }
+
+    console.log("✅ Following button clicked");
+
+    // Wait for the confirmation dialog to appear
+    console.log("⏳ Waiting for Unfollow confirmation...");
+    await page.waitForTimeout(1500);
+
+    // Click the "Unfollow" confirmation button
+    const unfollowResult = await page.evaluate(() => {
+      const allButtons = Array.from(document.querySelectorAll('button'));
+      
+      for (const btn of allButtons) {
+        const text = btn.textContent?.trim() || "";
+        
+        if (text === "Unfollow") {
+          console.log("✅ Found Unfollow button, clicking...");
+          btn.click();
+          return { success: true };
+        }
+      }
+      
+      console.log("❌ Unfollow button not found");
+      return { success: false };
+    });
+
+    if (!unfollowResult.success) {
+      throw new Error("Unfollow confirmation button not found");
+    }
+
+    console.log("✅ Unfollow button clicked");
+
+    // Wait for the action to complete
+    await page.waitForTimeout(2000);
+
+    // Verify by checking if button changed to "Follow"
+    console.log("🔍 Verifying unfollow...");
+    const verifyResult = await page.evaluate(() => {
+      const allButtons = Array.from(document.querySelectorAll('button'));
+      
+      for (const btn of allButtons) {
+        const text = btn.textContent?.trim() || "";
+        
+        if (text === "Follow") {
+          return { success: true };
+        }
+      }
+      
+      return { success: false };
+    });
+
+    if (verifyResult.success) {
+      console.log("✅ TikTok unfollow successful!");
+      return {
+        success: true,
+        message: "User unfollowed successfully",
+        profile_url: targetUrl,
+      };
+    } else {
+      throw new Error("Unfollow verification failed");
+    }
+
+  } catch (error) {
+    console.error("❌ TikTok unfollow failed:", error.message);
+
+    const timestamp = Date.now();
+    try {
+      await page.screenshot({
+        path: `tiktok-error-${timestamp}.png`,
+        fullPage: true,
+      });
+      console.log(`📸 Screenshot saved: tiktok-error-${timestamp}.png`);
+    } catch (screenshotError) {
+      console.log("⚠️ Could not save screenshot");
+    }
+
+    return {
+      success: false,
+      message: error.message,
+      profile_url: targetUrl,
+    };
+  }
+}
 async function unfollowUser(page, platform, targetUrl) {
   console.log(`🚫 Unfollowing user on ${platform}...`);
 
@@ -4882,6 +5901,9 @@ async function unfollowUser(page, platform, targetUrl) {
 
     if (platform === "twitter" || platform === "x") {
       return await twitterUnfollow(page, targetUrl);
+    }
+    if (platform === "tiktok") {
+      return await tiktokUnfollow(page, targetUrl);
     }
 
     return {
