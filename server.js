@@ -379,12 +379,7 @@ let activeContexts = {};
 
 // Modified /login-social endpoint (proxy parameters removed)
 app.post("/login-social", async (req, res) => {
-  const {
-    username,
-    password,
-    platform,
-    account_id,
-  } = req.body;
+  const { username, password, platform, account_id } = req.body;
 
   if (!LOGIN_URL[platform]) {
     return res.json({ success: false, message: "Platform not supported" });
@@ -411,11 +406,11 @@ app.post("/login-social", async (req, res) => {
     const browser = await chromium.launch({
       headless: false,
       args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-blink-features=AutomationControlled'
-      ]
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage",
+        "--disable-blink-features=AutomationControlled",
+      ],
     });
 
     const context = await browser.newContext({
@@ -424,7 +419,7 @@ app.post("/login-social", async (req, res) => {
       locale: "en-US",
       timezoneId: "America/New_York",
       permissions: ["geolocation", "notifications"],
-      viewport: { width: 1280, height: 720 }
+      viewport: { width: 1280, height: 720 },
     });
 
     activeBrowsers[account_id] = browser;
@@ -440,7 +435,7 @@ app.post("/login-social", async (req, res) => {
     });
 
     await page.waitForTimeout(2500);
-    
+
     switch (platform) {
       case "instagram":
         await page.waitForSelector('input[name="username"]', {
@@ -464,181 +459,247 @@ app.post("/login-social", async (req, res) => {
         await page.click('button[name="login"]');
         await page.waitForTimeout(5000);
         break;
+      // ========== TWITTER LOGIN CASE (Replace in your server.js) ==========
+case "twitter":
+  console.log("🐦 Starting Twitter login flow...");
+  
+  // Extract email and username from request
+  const twitterEmail = req.body.email || username; // Email for step 1
+  const twitterUsername = req.body.twitter_username || username; // Username for step 2
+  
+  console.log("📧 Using email:", twitterEmail);
+  console.log("👤 Using username:", twitterUsername);
 
-      case "twitter":
-        console.log("🐦 Starting Twitter login flow...");
-        
-        // Wait for initial input field
-        await page.waitForTimeout(3000);
-        
-        // Step 1: Enter username/email/phone
-        console.log("📧 Entering username/email...");
-        const usernameSelectors = [
-          'input[name="text"]',
-          'input[autocomplete="username"]',
-          'input[type="text"]',
-        ];
+  await page.waitForTimeout(3000);
 
-        let usernameEntered = false;
-        for (const selector of usernameSelectors) {
-          try {
-            const input = page.locator(selector).first();
-            if (await input.isVisible({ timeout: 5000 })) {
-              await input.click();
-              await input.fill(username);
-              console.log("✅ Username entered");
-              usernameEntered = true;
-              break;
-            }
-          } catch (e) {
-            continue;
-          }
-        }
+  // ========== STEP 1: Enter Email/Phone ==========
+  console.log("📧 STEP 1: Entering email/phone...");
+  
+  const emailSelectors = [
+    'input[autocomplete="username"]',
+    'input[name="text"]',
+    'input[type="text"]',
+    'input[autocomplete="email"]',
+  ];
 
-        if (!usernameEntered) {
-          throw new Error("Could not find Twitter username input field");
-        }
-
-        // Click "Next" button
-        await page.waitForTimeout(1500);
-        
-        const nextButtonSelectors = [
-          'div[role="button"]:has-text("Next")',
-          'button:has-text("Next")',
-          'span:has-text("Next")',
-        ];
-
-        let nextClicked = false;
-        for (const selector of nextButtonSelectors) {
-          try {
-            const btn = page.locator(selector).first();
-            if (await btn.isVisible({ timeout: 3000 })) {
-              await btn.click();
-              console.log("✅ Clicked Next button");
-              nextClicked = true;
-              break;
-            }
-          } catch (e) {
-            continue;
-          }
-        }
-
-        if (!nextClicked) {
-          console.log("⚠️ Next button not found, trying Enter key...");
-          await page.keyboard.press("Enter");
-        }
-
-        await page.waitForTimeout(4000);
-
-        // Step 2: Check for unusual activity / verification
-        console.log("🔍 Checking for verification screen...");
-        
-        const verificationInput = page.locator('input[data-testid="ocfEnterTextTextInput"]');
-        const isVerificationVisible = await verificationInput.isVisible({ timeout: 5000 }).catch(() => false);
-
-        if (isVerificationVisible) {
-          console.log("📱 Unusual activity detected - entering username again...");
-          await verificationInput.click();
-          await verificationInput.fill(username);
-          await page.keyboard.press("Enter");
-          await page.waitForTimeout(4000);
-        }
-
-        // Step 3: Enter password
-        console.log("🔐 Entering password...");
-        
-        const passwordSelectors = [
-          'input[name="password"]',
-          'input[type="password"]',
-          'input[autocomplete="current-password"]',
-        ];
-
-        let passwordEntered = false;
-        for (const selector of passwordSelectors) {
-          try {
-            const input = page.locator(selector).first();
-            if (await input.isVisible({ timeout: 8000 })) {
-              await input.click();
-              await page.waitForTimeout(500);
-              await input.fill(password);
-              console.log("✅ Password entered");
-              passwordEntered = true;
-              break;
-            }
-          } catch (e) {
-            continue;
-          }
-        }
-
-        if (!passwordEntered) {
-          // Take screenshot for debugging
-          await page.screenshot({ 
-            path: `twitter-password-screen-${Date.now()}.png`, 
-            fullPage: true 
-          });
-          throw new Error("Could not find Twitter password input field - check screenshot");
-        }
-
-        // Click "Log in" button
-        await page.waitForTimeout(1500);
-
-        const loginButtonSelectors = [
-          'div[role="button"]:has-text("Log in")',
-          'button[data-testid="LoginForm_Login_Button"]',
-          'div[data-testid="LoginForm_Login_Button"]',
-          'span:has-text("Log in")',
-        ];
-
-        let loginClicked = false;
-        for (const selector of loginButtonSelectors) {
-          try {
-            const btn = page.locator(selector).first();
-            if (await btn.isVisible({ timeout: 3000 })) {
-              await btn.click();
-              console.log("✅ Clicked Log in button");
-              loginClicked = true;
-              break;
-            }
-          } catch (e) {
-            continue;
-          }
-        }
-
-        if (!loginClicked) {
-          console.log("⚠️ Log in button not found, trying Enter key...");
-          await page.keyboard.press("Enter");
-        }
-
-        // Wait for login to complete
-        await page.waitForTimeout(8000);
-
-        // Verify login success
-        const currentUrl = page.url();
-        console.log("📍 Current URL after login:", currentUrl);
-
-        if (currentUrl.includes("/login") || currentUrl.includes("/i/flow/login")) {
-          // Still on login page - check for error message
-          const errorVisible = await page
-            .locator('span:has-text("Wrong password")')
-            .isVisible({ timeout: 3000 })
-            .catch(() => false);
-
-          if (errorVisible) {
-            throw new Error("Twitter login failed: Wrong password");
-          }
-
-          // Take screenshot for debugging
-          await page.screenshot({ 
-            path: `twitter-login-stuck-${Date.now()}.png`, 
-            fullPage: true 
-          });
-
-          throw new Error("Twitter login failed - still on login page. Check screenshot.");
-        }
-
-        console.log("✅ Twitter login successful");
+  let emailEntered = false;
+  for (const selector of emailSelectors) {
+    try {
+      const input = await page.waitForSelector(selector, { 
+        timeout: 5000, 
+        state: 'visible' 
+      });
+      
+      if (input) {
+        await input.click();
+        await page.waitForTimeout(500);
+        await input.fill(twitterEmail);
+        console.log("✅ Email/phone entered successfully");
+        emailEntered = true;
         break;
+      }
+    } catch (e) {
+      console.log(`⚠️ Selector ${selector} not found, trying next...`);
+      continue;
+    }
+  }
 
+  if (!emailEntered) {
+    await page.screenshot({
+      path: `twitter-step1-failed-${Date.now()}.png`,
+      fullPage: true,
+    });
+    throw new Error("Could not find email/phone input field - check screenshot");
+  }
+
+  // Click Next button after email
+  await page.waitForTimeout(1000);
+  
+  try {
+    const nextButton1 = page.locator('div[role="button"]:has-text("Next")').first();
+    if (await nextButton1.isVisible({ timeout: 3000 })) {
+      await nextButton1.click();
+      console.log("✅ Clicked Next button after email");
+    } else {
+      await page.keyboard.press("Enter");
+      console.log("✅ Pressed Enter after email");
+    }
+  } catch (e) {
+    await page.keyboard.press("Enter");
+    console.log("✅ Pressed Enter after email (fallback)");
+  }
+
+  await page.waitForTimeout(4000);
+
+  // ========== STEP 2: Enter Username (Twitter Handle) ==========
+  console.log("👤 STEP 2: Checking for username verification...");
+  
+  const usernameSelectors = [
+    'input[data-testid="ocfEnterTextTextInput"]',
+    'input[name="text"]',
+    'input[type="text"]',
+  ];
+
+  let usernameEntered = false;
+  
+  for (const selector of usernameSelectors) {
+    try {
+      const usernameInput = await page.waitForSelector(selector, { 
+        timeout: 5000, 
+        state: 'visible' 
+      });
+      
+      if (usernameInput) {
+        console.log("📱 Username verification screen detected");
+        await usernameInput.click();
+        await page.waitForTimeout(500);
+        
+        // Clean username (remove @ if present)
+        const cleanUsername = twitterUsername.replace('@', '');
+        await usernameInput.fill(cleanUsername);
+        console.log("✅ Username entered:", cleanUsername);
+        usernameEntered = true;
+        
+        // Click Next after username
+        await page.waitForTimeout(1000);
+        
+        try {
+          const nextButton2 = page.locator('div[role="button"]:has-text("Next")').first();
+          if (await nextButton2.isVisible({ timeout: 3000 })) {
+            await nextButton2.click();
+            console.log("✅ Clicked Next button after username");
+          } else {
+            await page.keyboard.press("Enter");
+            console.log("✅ Pressed Enter after username");
+          }
+        } catch (e) {
+          await page.keyboard.press("Enter");
+          console.log("✅ Pressed Enter after username (fallback)");
+        }
+        
+        await page.waitForTimeout(4000);
+        break;
+      }
+    } catch (e) {
+      console.log(`⚠️ Username selector ${selector} not found, trying next...`);
+      continue;
+    }
+  }
+
+  if (usernameEntered) {
+    console.log("✅ Username verification step completed");
+  } else {
+    console.log("ℹ️ No username verification required, proceeding to password");
+  }
+
+  // ========== STEP 3: Enter Password ==========
+  console.log("🔐 STEP 3: Entering password...");
+
+  const passwordSelectors = [
+    'input[name="password"]',
+    'input[type="password"]',
+    'input[autocomplete="current-password"]',
+  ];
+
+  let passwordEntered = false;
+  for (const selector of passwordSelectors) {
+    try {
+      const input = await page.waitForSelector(selector, { 
+        timeout: 8000, 
+        state: 'visible' 
+      });
+      
+      if (input) {
+        await input.click();
+        await page.waitForTimeout(500);
+        await input.fill(password);
+        console.log("✅ Password entered successfully");
+        passwordEntered = true;
+        break;
+      }
+    } catch (e) {
+      console.log(`⚠️ Password selector ${selector} not found, trying next...`);
+      continue;
+    }
+  }
+
+  if (!passwordEntered) {
+    await page.screenshot({
+      path: `twitter-password-failed-${Date.now()}.png`,
+      fullPage: true,
+    });
+    throw new Error("Could not find password input field - check screenshot");
+  }
+
+  // Click Log in button
+  await page.waitForTimeout(1500);
+
+  const loginButtonSelectors = [
+    'div[data-testid="LoginForm_Login_Button"]',
+    'div[role="button"]:has-text("Log in")',
+    'button:has-text("Log in")',
+    'span:has-text("Log in")',
+  ];
+
+  let loginClicked = false;
+  for (const selector of loginButtonSelectors) {
+    try {
+      const btn = page.locator(selector).first();
+      if (await btn.isVisible({ timeout: 3000 })) {
+        await btn.click();
+        console.log("✅ Clicked Log in button");
+        loginClicked = true;
+        break;
+      }
+    } catch (e) {
+      console.log(`⚠️ Login button ${selector} not found, trying next...`);
+      continue;
+    }
+  }
+
+  if (!loginClicked) {
+    console.log("⚠️ Log in button not found, trying Enter key...");
+    await page.keyboard.press("Enter");
+  }
+
+  // Wait for login to complete
+  console.log("⏳ Waiting for login to complete...");
+  await page.waitForTimeout(8000);
+
+  // Verify login success
+  const currentUrl = page.url();
+  console.log("📍 Current URL after login:", currentUrl);
+
+  if (currentUrl.includes("/login") || currentUrl.includes("/i/flow/login")) {
+    // Check for various error messages
+    const errors = [
+      { selector: 'span:has-text("Wrong password")', message: "Wrong password" },
+      { selector: 'span:has-text("unusual login activity")', message: "Unusual login activity detected" },
+      { selector: 'span:has-text("suspended")', message: "Account suspended" },
+    ];
+
+    for (const error of errors) {
+      const errorVisible = await page.locator(error.selector)
+        .isVisible({ timeout: 2000 })
+        .catch(() => false);
+      
+      if (errorVisible) {
+        throw new Error(`Twitter login failed: ${error.message}`);
+      }
+    }
+
+    // Take screenshot for debugging
+    await page.screenshot({
+      path: `twitter-login-failed-${Date.now()}.png`,
+      fullPage: true,
+    });
+
+    throw new Error("Twitter login failed - still on login page. Check screenshot.");
+  }
+
+  console.log("✅ Twitter login successful!");
+  console.log("🎉 Redirected to:", currentUrl);
+  break;
       case "tiktok":
         await page.waitForTimeout(3000);
         await page.fill('input[name="username"]', username);
@@ -694,11 +755,7 @@ app.post("/login-social", async (req, res) => {
 
 // --------------- CHECK LOGIN STATUS -------------------
 app.post("/check-login", async (req, res) => {
-  const {
-    platform,
-    cookies,
-    sessionData,
-  } = req.body;
+  const { platform, cookies, sessionData } = req.body;
 
   if (!cookies || !sessionData) {
     return res.json({
@@ -783,23 +840,24 @@ app.post("/execute-task", async (req, res) => {
       }
 
       browser = await chromium.launch({
-        headless: false,  // Browser will be visible
-        slowMo: 100,      // Slow down operations by 100ms for visibility
+        headless: false, // Browser will be visible
+        slowMo: 100, // Slow down operations by 100ms for visibility
         args: [
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage',
-          '--disable-blink-features=AutomationControlled',
-          '--start-maximized'
-        ]
+          "--no-sandbox",
+          "--disable-setuid-sandbox",
+          "--disable-dev-shm-usage",
+          "--disable-blink-features=AutomationControlled",
+          "--start-maximized",
+        ],
       });
 
       context = await browser.newContext({
         storageState,
-        userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36",
+        userAgent:
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36",
         locale: "en-US",
         viewport: { width: 1280, height: 720 },
-        permissions: ["geolocation", "notifications"]
+        permissions: ["geolocation", "notifications"],
       });
 
       activeBrowsers[account.id] = browser;
@@ -825,7 +883,7 @@ app.post("/execute-task", async (req, res) => {
       const result = await likePost(page, platform, task.target_url);
       return res.json(result);
     }
-    
+
     if (taskType === "comment") {
       return res.json(
         await commentOnPost(page, platform, task.target_url, task.comment)
@@ -848,7 +906,7 @@ app.post("/execute-task", async (req, res) => {
 // Add endpoint to close browser for an account
 app.post("/close-browser", async (req, res) => {
   const { account_id } = req.body;
-  
+
   try {
     if (activeBrowsers[account_id]) {
       await activeBrowsers[account_id].close();
@@ -857,7 +915,7 @@ app.post("/close-browser", async (req, res) => {
       console.log(`🔒 Browser closed for account ${account_id}`);
       return res.json({ success: true, message: "Browser closed" });
     }
-    
+
     return res.json({ success: true, message: "No active browser found" });
   } catch (error) {
     console.error("❌ Failed to close browser:", error.message);
@@ -875,7 +933,7 @@ async function createPost(page, platform, task) {
     if (platform === "facebook") {
       return await createFacebookPost(page, task);
     }
-    if(platform === "twitter") {
+    if (platform === "twitter") {
       return await createTwitterPost(page, task);
     }
 
@@ -1172,7 +1230,10 @@ async function createFacebookPost(page, postContent) {
 
     // Close any popups
     try {
-      await page.locator('[aria-label="Close"]').first().click({ timeout: 2000 });
+      await page
+        .locator('[aria-label="Close"]')
+        .first()
+        .click({ timeout: 2000 });
       await page.waitForTimeout(1000);
     } catch (e) {
       // No popup to close
@@ -1212,7 +1273,7 @@ async function createFacebookPost(page, postContent) {
 
     // 3️⃣ Wait for post composer dialog to open
     console.log("⏳ Waiting for post composer...");
-    
+
     const composerSelectors = [
       'div[role="dialog"]',
       '[aria-label="Create a post"]',
@@ -1222,9 +1283,9 @@ async function createFacebookPost(page, postContent) {
     let composerFound = false;
     for (const selector of composerSelectors) {
       try {
-        await page.locator(selector).first().waitFor({ 
-          state: "visible", 
-          timeout: 5000 
+        await page.locator(selector).first().waitFor({
+          state: "visible",
+          timeout: 5000,
         });
         composerFound = true;
         console.log("✅ Post composer opened");
@@ -1242,7 +1303,7 @@ async function createFacebookPost(page, postContent) {
 
     // 4️⃣ Check if there's an image to upload
     const hasImage = postContent?.media_urls;
-    
+
     if (hasImage) {
       console.log("🖼️ Image detected, preparing to upload...");
 
@@ -1289,7 +1350,9 @@ async function createFacebookPost(page, postContent) {
       }
 
       if (!photoClicked) {
-        console.log("⚠️ Could not click Photo/video button, trying direct file input...");
+        console.log(
+          "⚠️ Could not click Photo/video button, trying direct file input..."
+        );
       }
 
       await page.waitForTimeout(2000);
@@ -1363,7 +1426,7 @@ async function createFacebookPost(page, postContent) {
           if (await textBox.isVisible({ timeout: 3000 })) {
             await textBox.click({ timeout: 3000 });
             await page.waitForTimeout(1000);
-            
+
             // Type text with human-like delay
             await textBox.type(fullText, { delay: 50 + Math.random() * 100 });
             console.log("✅ Post text added");
@@ -1401,9 +1464,11 @@ async function createFacebookPost(page, postContent) {
         const postBtn = page.locator(selector).first();
         if (await postBtn.isVisible({ timeout: 5000 })) {
           // Check if button is enabled (not disabled/grayed out)
-          const isEnabled = await postBtn.evaluate(el => {
-            return !el.hasAttribute('aria-disabled') || 
-                   el.getAttribute('aria-disabled') === 'false';
+          const isEnabled = await postBtn.evaluate((el) => {
+            return (
+              !el.hasAttribute("aria-disabled") ||
+              el.getAttribute("aria-disabled") === "false"
+            );
           });
 
           if (!isEnabled) {
@@ -1413,7 +1478,7 @@ async function createFacebookPost(page, postContent) {
 
           await postBtn.scrollIntoViewIfNeeded();
           await page.waitForTimeout(500);
-          
+
           try {
             await postBtn.click({ timeout: 5000 });
           } catch (e) {
@@ -1460,12 +1525,11 @@ async function createFacebookPost(page, postContent) {
 
     return {
       success: true,
-      message: postSuccess 
-        ? "Facebook post created successfully" 
+      message: postSuccess
+        ? "Facebook post created successfully"
         : "Facebook post likely created (confirmation pending)",
       post_url: page.url(),
     };
-
   } catch (error) {
     console.error("❌ Facebook post failed:", error.message);
 
@@ -1526,8 +1590,10 @@ async function createTwitterPost(page, postContent) {
     for (const selector of tweetBoxSelectors) {
       try {
         const box = page.locator(selector).first();
-        const isVisible = await box.isVisible({ timeout: 3000 }).catch(() => false);
-        
+        const isVisible = await box
+          .isVisible({ timeout: 3000 })
+          .catch(() => false);
+
         if (isVisible) {
           tweetBox = box;
           foundSelector = selector;
@@ -1542,24 +1608,26 @@ async function createTwitterPost(page, postContent) {
     // Try JavaScript method if not found
     if (!tweetBox) {
       console.log("🔍 Trying JavaScript method to find tweet box...");
-      
+
       const foundViaJs = await page.evaluate(() => {
-        const editableDivs = Array.from(document.querySelectorAll('div[contenteditable="true"]'));
-        
+        const editableDivs = Array.from(
+          document.querySelectorAll('div[contenteditable="true"]')
+        );
+
         for (const div of editableDivs) {
-          const testId = div.getAttribute('data-testid') || '';
-          const ariaLabel = div.getAttribute('aria-label') || '';
-          
+          const testId = div.getAttribute("data-testid") || "";
+          const ariaLabel = div.getAttribute("aria-label") || "";
+
           if (
-            testId === 'tweetTextarea_0' ||
-            ariaLabel.includes('Post text') ||
-            ariaLabel.includes('Tweet text')
+            testId === "tweetTextarea_0" ||
+            ariaLabel.includes("Post text") ||
+            ariaLabel.includes("Tweet text")
           ) {
-            div.setAttribute('data-target-tweet-box', 'true');
+            div.setAttribute("data-target-tweet-box", "true");
             return true;
           }
         }
-        
+
         return false;
       });
 
@@ -1576,7 +1644,7 @@ async function createTwitterPost(page, postContent) {
         fullPage: true,
       });
       console.log(`📸 Screenshot saved: ${screenshotPath}`);
-      
+
       throw new Error("Twitter compose box not found - check screenshot");
     }
 
@@ -1584,13 +1652,13 @@ async function createTwitterPost(page, postContent) {
     console.log("📝 Clicking tweet compose box...");
     await tweetBox.scrollIntoViewIfNeeded();
     await page.waitForTimeout(1000);
-    
+
     try {
       await tweetBox.click({ timeout: 5000 });
     } catch (e) {
       await tweetBox.click({ force: true });
     }
-    
+
     await page.waitForTimeout(2000);
 
     // 4️⃣ Prepare tweet content
@@ -1606,7 +1674,7 @@ async function createTwitterPost(page, postContent) {
 
     // 5️⃣ Type the tweet content
     let typingSuccessful = false;
-    
+
     // Method 1: Use Playwright's fill and type
     try {
       await tweetBox.fill("");
@@ -1633,23 +1701,26 @@ async function createTwitterPost(page, postContent) {
     if (!typingSuccessful) {
       try {
         await page.evaluate((text) => {
-          const box = document.querySelector('[data-target-tweet-box="true"]') ||
-                      document.querySelector('div[data-testid="tweetTextarea_0"]') ||
-                      document.querySelector('div[contenteditable="true"][role="textbox"]');
-          
+          const box =
+            document.querySelector('[data-target-tweet-box="true"]') ||
+            document.querySelector('div[data-testid="tweetTextarea_0"]') ||
+            document.querySelector(
+              'div[contenteditable="true"][role="textbox"]'
+            );
+
           if (box) {
             box.focus();
             box.textContent = text;
-            
+
             // Trigger input event
-            const inputEvent = new Event('input', { bubbles: true });
+            const inputEvent = new Event("input", { bubbles: true });
             box.dispatchEvent(inputEvent);
-            
+
             return true;
           }
           return false;
         }, fullText);
-        
+
         typingSuccessful = true;
         console.log("✅ Tweet content inserted (JavaScript method)");
       } catch (e) {
@@ -1665,22 +1736,22 @@ async function createTwitterPost(page, postContent) {
 
     // 6️⃣ Check if there's an image to upload
     const hasImage = postContent?.media_urls;
-    
+
     if (hasImage) {
       console.log("🖼️ Image detected, preparing to upload...");
 
       // Build absolute path to image (adjust path as needed)
-      const path = require('path');
-      const fs = require('fs');
-      
-        const absoluteImagePath = path.join(
-      "C:",
-      "wamp64",
-      "www",
-      "social-automation",
-      "public",
-      postContent.media_urls
-    );
+      const path = require("path");
+      const fs = require("fs");
+
+      const absoluteImagePath = path.join(
+        "C:",
+        "wamp64",
+        "www",
+        "social-automation",
+        "public",
+        postContent.media_urls
+      );
 
       console.log("🔍 Looking for image at:", absoluteImagePath);
 
@@ -1705,8 +1776,8 @@ async function createTwitterPost(page, postContent) {
       for (const selector of mediaButtonSelectors) {
         try {
           const elem = page.locator(selector).first();
-          
-          if (selector.includes('input')) {
+
+          if (selector.includes("input")) {
             // Direct file input
             await elem.setInputFiles(absoluteImagePath);
             console.log("✅ Image uploaded via file input");
@@ -1718,7 +1789,7 @@ async function createTwitterPost(page, postContent) {
               // Click button to open file dialog
               await elem.click({ timeout: 3000 });
               await page.waitForTimeout(1000);
-              
+
               // Then upload file
               const fileInput = page.locator('input[type="file"]').first();
               await fileInput.setInputFiles(absoluteImagePath);
@@ -1760,14 +1831,20 @@ async function createTwitterPost(page, postContent) {
     for (const selector of postButtonSelectors) {
       try {
         const btn = page.locator(selector).first();
-        const isVisible = await btn.isVisible({ timeout: 3000 }).catch(() => false);
-        
+        const isVisible = await btn
+          .isVisible({ timeout: 3000 })
+          .catch(() => false);
+
         if (isVisible) {
           // Check if button is enabled
-          const isDisabled = await btn.getAttribute('disabled').catch(() => null);
-          const ariaDisabled = await btn.getAttribute('aria-disabled').catch(() => null);
-          
-          if (isDisabled === null && ariaDisabled !== 'true') {
+          const isDisabled = await btn
+            .getAttribute("disabled")
+            .catch(() => null);
+          const ariaDisabled = await btn
+            .getAttribute("aria-disabled")
+            .catch(() => null);
+
+          if (isDisabled === null && ariaDisabled !== "true") {
             postButton = btn;
             postButtonFound = true;
             console.log(`✅ Found Post button: ${selector}`);
@@ -1784,29 +1861,32 @@ async function createTwitterPost(page, postContent) {
     // Try JavaScript method to find Post button
     if (!postButton) {
       console.log("🔍 Trying JavaScript method to find Post button...");
-      
+
       const foundBtnViaJs = await page.evaluate(() => {
-        const buttons = Array.from(document.querySelectorAll('button, div[role="button"]'));
-        
+        const buttons = Array.from(
+          document.querySelectorAll('button, div[role="button"]')
+        );
+
         for (const btn of buttons) {
-          const testId = btn.getAttribute('data-testid') || '';
-          const text = btn.textContent?.trim() || '';
-          const disabled = btn.disabled || btn.getAttribute('aria-disabled') === 'true';
-          
+          const testId = btn.getAttribute("data-testid") || "";
+          const text = btn.textContent?.trim() || "";
+          const disabled =
+            btn.disabled || btn.getAttribute("aria-disabled") === "true";
+
           if (
-            (testId === 'tweetButton' || testId === 'tweetButtonInline') &&
+            (testId === "tweetButton" || testId === "tweetButtonInline") &&
             !disabled
           ) {
-            btn.setAttribute('data-target-post-btn', 'true');
+            btn.setAttribute("data-target-post-btn", "true");
             return true;
           }
-          
-          if ((text === 'Post' || text === 'Tweet') && !disabled) {
-            btn.setAttribute('data-target-post-btn', 'true');
+
+          if ((text === "Post" || text === "Tweet") && !disabled) {
+            btn.setAttribute("data-target-post-btn", "true");
             return true;
           }
         }
-        
+
         return false;
       });
 
@@ -1824,18 +1904,20 @@ async function createTwitterPost(page, postContent) {
         fullPage: true,
       });
       console.log(`📸 Screenshot saved: ${screenshotPath}`);
-      
-      throw new Error("Twitter Post button not found or is disabled - check screenshot");
+
+      throw new Error(
+        "Twitter Post button not found or is disabled - check screenshot"
+      );
     }
 
     // 8️⃣ Click the Post button
     console.log("📤 Clicking Post button...");
-    
+
     await postButton.scrollIntoViewIfNeeded();
     await page.waitForTimeout(500);
-    
+
     let postClicked = false;
-    
+
     // Method 1: Normal click
     try {
       await postButton.click({ timeout: 5000 });
@@ -1860,8 +1942,9 @@ async function createTwitterPost(page, postContent) {
     if (!postClicked) {
       try {
         await page.evaluate(() => {
-          const btn = document.querySelector('[data-target-post-btn="true"]') ||
-                      document.querySelector('button[data-testid="tweetButton"]');
+          const btn =
+            document.querySelector('[data-target-post-btn="true"]') ||
+            document.querySelector('button[data-testid="tweetButton"]');
           if (btn) {
             btn.click();
             return true;
@@ -1885,14 +1968,15 @@ async function createTwitterPost(page, postContent) {
 
     // Verify tweet was posted by checking if compose box is empty/reset
     const tweetPosted = await page.evaluate(() => {
-      const box = document.querySelector('div[data-testid="tweetTextarea_0"]') ||
-                  document.querySelector('div[contenteditable="true"][role="textbox"]');
-      
+      const box =
+        document.querySelector('div[data-testid="tweetTextarea_0"]') ||
+        document.querySelector('div[contenteditable="true"][role="textbox"]');
+
       if (box) {
-        const text = box.textContent?.trim() || '';
-        return text === '' || text === 'What is happening?!';
+        const text = box.textContent?.trim() || "";
+        return text === "" || text === "What is happening?!";
       }
-      
+
       return true; // Assume posted if box not found
     });
 
@@ -1914,7 +1998,6 @@ async function createTwitterPost(page, postContent) {
         note: "Post was submitted but verification pending. Check your profile manually.",
       };
     }
-
   } catch (error) {
     console.error("❌ Twitter post failed:", error.message);
 
@@ -1925,7 +2008,9 @@ async function createTwitterPost(page, postContent) {
         path: `twitter-post-error-${timestamp}.png`,
         fullPage: true,
       });
-      console.log(`📸 Error screenshot saved: twitter-post-error-${timestamp}.png`);
+      console.log(
+        `📸 Error screenshot saved: twitter-post-error-${timestamp}.png`
+      );
     } catch (screenshotError) {
       console.log("⚠️ Could not save error screenshot");
     }
@@ -2165,9 +2250,9 @@ async function instagramLike(page, targetUrl) {
     if (!confirmed) {
       console.warn("⚠️ No red heart visible – like may still have worked");
       // Take debug screenshot
-      await page.screenshot({ 
-        path: `instagram-like-attempt-${Date.now()}.png`, 
-        fullPage: false 
+      await page.screenshot({
+        path: `instagram-like-attempt-${Date.now()}.png`,
+        fullPage: false,
       });
       return {
         success: true,
@@ -2181,9 +2266,9 @@ async function instagramLike(page, targetUrl) {
     console.error("❌ Instagram like failed:", error.message);
     // Debug screenshot
     try {
-      await page.screenshot({ 
-        path: `instagram-like-error-${Date.now()}.png`, 
-        fullPage: false 
+      await page.screenshot({
+        path: `instagram-like-error-${Date.now()}.png`,
+        fullPage: false,
       });
     } catch {}
     return { success: false, message: error.message };
@@ -2232,17 +2317,17 @@ async function facebookLike(page, targetUrl) {
     // Check if already liked
     const alreadyLiked = await page.evaluate(() => {
       // Look for "Unlike" text or filled/active like button
-      const elements = document.querySelectorAll('[aria-label]');
-      
+      const elements = document.querySelectorAll("[aria-label]");
+
       for (const elem of elements) {
-        const ariaLabel = elem.getAttribute('aria-label');
+        const ariaLabel = elem.getAttribute("aria-label");
         if (ariaLabel) {
           const lowerLabel = ariaLabel.toLowerCase();
           // Check for "Remove Like" or similar patterns
           if (
-            lowerLabel.includes('remove like') ||
-            lowerLabel.includes('unlike') ||
-            lowerLabel === 'like: liked'
+            lowerLabel.includes("remove like") ||
+            lowerLabel.includes("unlike") ||
+            lowerLabel === "like: liked"
           ) {
             return true;
           }
@@ -2250,14 +2335,19 @@ async function facebookLike(page, targetUrl) {
       }
 
       // Check for active/filled thumbs up icon
-      const svgs = document.querySelectorAll('svg');
+      const svgs = document.querySelectorAll("svg");
       for (const svg of svgs) {
-        const fill = svg.querySelector('path')?.getAttribute('fill');
-        const parentLabel = svg.closest('[aria-label]')?.getAttribute('aria-label');
-        
-        if (parentLabel && parentLabel.toLowerCase().includes('like')) {
+        const fill = svg.querySelector("path")?.getAttribute("fill");
+        const parentLabel = svg
+          .closest("[aria-label]")
+          ?.getAttribute("aria-label");
+
+        if (parentLabel && parentLabel.toLowerCase().includes("like")) {
           // Blue fill indicates already liked
-          if (fill && (fill.includes('rgb(24, 119, 242)') || fill === '#1877F2')) {
+          if (
+            fill &&
+            (fill.includes("rgb(24, 119, 242)") || fill === "#1877F2")
+          ) {
             return true;
           }
         }
@@ -2280,17 +2370,17 @@ async function facebookLike(page, targetUrl) {
       '[aria-label="like"]',
       'div[aria-label="Like"][role="button"]',
       'span[aria-label="Like"][role="button"]',
-      
+
       // Text-based selectors
       'div[role="button"]:has-text("Like")',
       'span[role="button"]:has-text("Like")',
-      
+
       // Reaction button (Facebook's main reaction element)
       '[data-testid="reaction-button"]',
-      
+
       // SVG parent with Like label
       'svg[aria-label="Like"]',
-      
+
       // Specific Facebook classes
       'div.x1i10hfl[role="button"][tabindex="0"]',
     ];
@@ -2301,8 +2391,10 @@ async function facebookLike(page, targetUrl) {
     for (const selector of likeSelectors) {
       try {
         const btn = page.locator(selector).first();
-        const isVisible = await btn.isVisible({ timeout: 3000 }).catch(() => false);
-        
+        const isVisible = await btn
+          .isVisible({ timeout: 3000 })
+          .catch(() => false);
+
         if (isVisible) {
           likeButton = btn;
           foundSelector = selector;
@@ -2317,29 +2409,29 @@ async function facebookLike(page, targetUrl) {
     // JavaScript evaluation fallback
     if (!likeButton) {
       console.log("🔍 Trying JavaScript evaluation...");
-      
+
       const likeButtonFound = await page.evaluate(() => {
         // Find elements with "Like" aria-label
-        const elements = document.querySelectorAll('[aria-label]');
-        
+        const elements = document.querySelectorAll("[aria-label]");
+
         for (const elem of elements) {
-          const ariaLabel = elem.getAttribute('aria-label');
-          if (ariaLabel && ariaLabel.toLowerCase() === 'like') {
-            const role = elem.getAttribute('role');
+          const ariaLabel = elem.getAttribute("aria-label");
+          if (ariaLabel && ariaLabel.toLowerCase() === "like") {
+            const role = elem.getAttribute("role");
             const tag = elem.tagName.toLowerCase();
-            
+
             if (
-              role === 'button' ||
-              tag === 'button' ||
-              (tag === 'div' && role === 'button') ||
-              (tag === 'span' && role === 'button')
+              role === "button" ||
+              tag === "button" ||
+              (tag === "div" && role === "button") ||
+              (tag === "span" && role === "button")
             ) {
-              elem.setAttribute('data-fb-like-button', 'true');
+              elem.setAttribute("data-fb-like-button", "true");
               return true;
             }
           }
         }
-        
+
         return false;
       });
 
@@ -2357,16 +2449,16 @@ async function facebookLike(page, targetUrl) {
         fullPage: true,
       });
       console.log(`📸 Screenshot saved: ${screenshotPath}`);
-      
+
       throw new Error("Facebook Like button not found - check screenshot");
     }
 
     // Click the Like button
     console.log("👍 Clicking Like button...");
-    
+
     await likeButton.scrollIntoViewIfNeeded();
     await page.waitForTimeout(500 + Math.random() * 500);
-    
+
     try {
       await likeButton.hover({ timeout: 5000 });
       await page.waitForTimeout(300 + Math.random() * 400);
@@ -2381,16 +2473,16 @@ async function facebookLike(page, targetUrl) {
 
     // Verify like was successful
     const likeConfirmed = await page.evaluate(() => {
-      const elements = document.querySelectorAll('[aria-label]');
-      
+      const elements = document.querySelectorAll("[aria-label]");
+
       for (const elem of elements) {
-        const ariaLabel = elem.getAttribute('aria-label');
+        const ariaLabel = elem.getAttribute("aria-label");
         if (ariaLabel) {
           const lowerLabel = ariaLabel.toLowerCase();
           if (
-            lowerLabel.includes('remove like') ||
-            lowerLabel.includes('unlike') ||
-            lowerLabel === 'like: liked'
+            lowerLabel.includes("remove like") ||
+            lowerLabel.includes("unlike") ||
+            lowerLabel === "like: liked"
           ) {
             return true;
           }
@@ -2398,12 +2490,15 @@ async function facebookLike(page, targetUrl) {
       }
 
       // Check for blue/filled thumbs up
-      const svgs = document.querySelectorAll('svg');
+      const svgs = document.querySelectorAll("svg");
       for (const svg of svgs) {
-        const path = svg.querySelector('path');
+        const path = svg.querySelector("path");
         if (path) {
-          const fill = path.getAttribute('fill');
-          if (fill && (fill.includes('rgb(24, 119, 242)') || fill === '#1877F2')) {
+          const fill = path.getAttribute("fill");
+          if (
+            fill &&
+            (fill.includes("rgb(24, 119, 242)") || fill === "#1877F2")
+          ) {
             return true;
           }
         }
@@ -2421,12 +2516,11 @@ async function facebookLike(page, targetUrl) {
     }
 
     console.log("👍 Facebook like successful & confirmed");
-    return { 
-      success: true, 
+    return {
+      success: true,
       message: "Post liked successfully",
-      post_url: targetUrl 
+      post_url: targetUrl,
     };
-
   } catch (error) {
     console.error("❌ Facebook like failed:", error.message);
 
@@ -2437,7 +2531,9 @@ async function facebookLike(page, targetUrl) {
         path: `facebook-like-error-${timestamp}.png`,
         fullPage: true,
       });
-      console.log(`📸 Error screenshot saved: facebook-like-error-${timestamp}.png`);
+      console.log(
+        `📸 Error screenshot saved: facebook-like-error-${timestamp}.png`
+      );
     } catch (screenshotError) {
       console.log("⚠️ Could not save error screenshot");
     }
@@ -2473,17 +2569,19 @@ async function twitterLike(page, targetUrl) {
 
     // Check if already liked and find like button
     const likeStatus = await page.evaluate(() => {
-      const buttons = Array.from(document.querySelectorAll('button, div[role="button"]'));
-      
+      const buttons = Array.from(
+        document.querySelectorAll('button, div[role="button"]')
+      );
+
       for (const btn of buttons) {
-        const ariaLabel = btn.getAttribute('aria-label') || '';
-        const testId = btn.getAttribute('data-testid') || '';
-        
+        const ariaLabel = btn.getAttribute("aria-label") || "";
+        const testId = btn.getAttribute("data-testid") || "";
+
         // Check for "Liked" state (already liked - filled heart)
         if (
-          ariaLabel.toLowerCase().includes('liked') ||
-          testId === 'unlike' ||
-          testId.includes('unlike')
+          ariaLabel.toLowerCase().includes("liked") ||
+          testId === "unlike" ||
+          testId.includes("unlike")
         ) {
           return { isLiked: true, foundButton: false };
         }
@@ -2491,21 +2589,22 @@ async function twitterLike(page, targetUrl) {
 
       // Now look for Like button (empty heart)
       for (const btn of buttons) {
-        const ariaLabel = btn.getAttribute('aria-label') || '';
-        const testId = btn.getAttribute('data-testid') || '';
-        
+        const ariaLabel = btn.getAttribute("aria-label") || "";
+        const testId = btn.getAttribute("data-testid") || "";
+
         // Check for "Like" button (not "Liked")
         if (
-          (ariaLabel.toLowerCase() === 'like' && !ariaLabel.toLowerCase().includes('liked')) ||
-          testId === 'like' ||
-          (testId.includes('like') && !testId.includes('unlike'))
+          (ariaLabel.toLowerCase() === "like" &&
+            !ariaLabel.toLowerCase().includes("liked")) ||
+          testId === "like" ||
+          (testId.includes("like") && !testId.includes("unlike"))
         ) {
           // Mark this button for clicking
-          btn.setAttribute('data-target-like-btn', 'true');
+          btn.setAttribute("data-target-like-btn", "true");
           return { isLiked: false, foundButton: true };
         }
       }
-      
+
       return { isLiked: false, foundButton: false };
     });
 
@@ -2521,14 +2620,14 @@ async function twitterLike(page, targetUrl) {
 
     if (!likeStatus.foundButton) {
       console.log("❌ Like button not found on page");
-      
+
       const screenshotPath = `twitter-no-like-btn-${Date.now()}.png`;
       await page.screenshot({
         path: screenshotPath,
         fullPage: true,
       });
       console.log(`📸 Screenshot saved: ${screenshotPath}`);
-      
+
       throw new Error("Twitter Like button not found - check screenshot");
     }
 
@@ -2543,7 +2642,7 @@ async function twitterLike(page, targetUrl) {
 
     // Try to click with multiple strategies
     let clickSuccessful = false;
-    
+
     // Strategy 1: Normal click
     try {
       await likeButton.hover({ timeout: 3000 });
@@ -2577,7 +2676,7 @@ async function twitterLike(page, targetUrl) {
           }
           return false;
         });
-        
+
         if (jsClicked) {
           clickSuccessful = true;
           console.log("✅ Clicked Like button (JavaScript click)");
@@ -2597,36 +2696,45 @@ async function twitterLike(page, targetUrl) {
 
     // Verify like was successful
     console.log("🔍 Verifying like status...");
-    
+
     const likeConfirmed = await page.evaluate(() => {
-      const buttons = Array.from(document.querySelectorAll('button, div[role="button"]'));
+      const buttons = Array.from(
+        document.querySelectorAll('button, div[role="button"]')
+      );
 
       for (const btn of buttons) {
-        const ariaLabel = btn.getAttribute('aria-label') || '';
-        const testId = btn.getAttribute('data-testid') || '';
+        const ariaLabel = btn.getAttribute("aria-label") || "";
+        const testId = btn.getAttribute("data-testid") || "";
 
         // Check if button now shows "Liked" (filled heart)
         if (
-          ariaLabel.toLowerCase().includes('liked') ||
-          testId === 'unlike' ||
-          testId.includes('unlike')
+          ariaLabel.toLowerCase().includes("liked") ||
+          testId === "unlike" ||
+          testId.includes("unlike")
         ) {
           return true;
         }
       }
 
       // Alternative check: look for filled heart SVG
-      const svgs = document.querySelectorAll('svg');
+      const svgs = document.querySelectorAll("svg");
       for (const svg of svgs) {
-        const paths = svg.querySelectorAll('path');
+        const paths = svg.querySelectorAll("path");
         for (const path of paths) {
-          const d = path.getAttribute('d') || '';
+          const d = path.getAttribute("d") || "";
           // Twitter's filled heart path
-          if (d.includes('M20.884 13.19c-1.351 2.48-4.001 5.12-8.379 7.67') || 
-              d.includes('M12 21.638h-.014C9.403')) {
-            const fill = path.getAttribute('fill') || '';
+          if (
+            d.includes("M20.884 13.19c-1.351 2.48-4.001 5.12-8.379 7.67") ||
+            d.includes("M12 21.638h-.014C9.403")
+          ) {
+            const fill = path.getAttribute("fill") || "";
             // Check if it's filled (red/pink color)
-            if (fill && (fill.includes('rgb(249') || fill.includes('#F91880') || fill === 'currentColor')) {
+            if (
+              fill &&
+              (fill.includes("rgb(249") ||
+                fill.includes("#F91880") ||
+                fill === "currentColor")
+            ) {
               return true;
             }
           }
@@ -2646,7 +2754,7 @@ async function twitterLike(page, targetUrl) {
       };
     } else {
       console.warn("⚠️ Like button was clicked but confirmation not detected");
-      
+
       // Take a screenshot for debugging
       const screenshotPath = `twitter-like-unconfirmed-${Date.now()}.png`;
       await page.screenshot({
@@ -2654,7 +2762,7 @@ async function twitterLike(page, targetUrl) {
         fullPage: true,
       });
       console.log(`📸 Screenshot saved: ${screenshotPath}`);
-      
+
       return {
         success: true,
         message: "Like button clicked (awaiting confirmation)",
@@ -2663,7 +2771,6 @@ async function twitterLike(page, targetUrl) {
         note: "Button was clicked but 'Liked' status not yet detected. May need a few seconds.",
       };
     }
-
   } catch (error) {
     console.error("❌ Twitter like failed:", error.message);
 
@@ -2674,7 +2781,9 @@ async function twitterLike(page, targetUrl) {
         path: `twitter-like-error-${timestamp}.png`,
         fullPage: true,
       });
-      console.log(`📸 Error screenshot saved: twitter-like-error-${timestamp}.png`);
+      console.log(
+        `📸 Error screenshot saved: twitter-like-error-${timestamp}.png`
+      );
     } catch (screenshotError) {
       console.log("⚠️ Could not save error screenshot");
     }
@@ -2701,7 +2810,7 @@ async function likePost(page, platform, targetUrl) {
     if (platform === "facebook") {
       return await facebookLike(page, targetUrl);
     }
-     if (platform === "twitter") {
+    if (platform === "twitter") {
       return await twitterLike(page, targetUrl);
     }
 
@@ -2711,7 +2820,7 @@ async function likePost(page, platform, targetUrl) {
     };
   } catch (error) {
     console.error(`❌ Like failed on ${platform}:`, error.message);
-    
+
     // Debug screenshot
     try {
       await page.screenshot({
@@ -2719,7 +2828,7 @@ async function likePost(page, platform, targetUrl) {
         fullPage: false,
       });
     } catch {}
-    
+
     return {
       success: false,
       message: error.message,
@@ -2730,7 +2839,6 @@ async function likePost(page, platform, targetUrl) {
 // ==========================================
 // COMMENT FUNCTION
 // ==========================================
-
 
 async function instagramComment(page, targetUrl, commentText) {
   console.log("💬 Commenting on Instagram...");
@@ -2954,7 +3062,7 @@ async function facebookComment(page, targetUrl, commentText) {
       '[aria-label="Close"]',
       '[aria-label="close"]',
       'div[role="button"][aria-label="Close"]',
-      'i.x1b0d669.xep6ejk' // Facebook X icon class
+      "i.x1b0d669.xep6ejk", // Facebook X icon class
     ];
 
     for (const selector of closeSelectors) {
@@ -2984,10 +3092,10 @@ async function facebookComment(page, targetUrl, commentText) {
       'div[aria-placeholder="Write a comment..."]',
       'div[contenteditable="true"][role="textbox"]',
       'div[contenteditable="true"][data-lexical-editor="true"]',
-      'div.x1ed109x.xrvj5dj.x1l90r2v.xds687c', // Facebook comment box classes
+      "div.x1ed109x.xrvj5dj.x1l90r2v.xds687c", // Facebook comment box classes
       'div[data-lexical-editor="true"]',
       'textarea[placeholder*="Write a comment"]',
-      'div.notranslate._5rpu' // Older Facebook class
+      "div.notranslate._5rpu", // Older Facebook class
     ];
 
     let commentBox = null;
@@ -2996,8 +3104,10 @@ async function facebookComment(page, targetUrl, commentText) {
     for (const sel of commentSelectors) {
       try {
         const box = page.locator(sel).first();
-        const isVisible = await box.isVisible({ timeout: 3000 }).catch(() => false);
-        
+        const isVisible = await box
+          .isVisible({ timeout: 3000 })
+          .catch(() => false);
+
         if (isVisible) {
           commentBox = box;
           foundSelector = sel;
@@ -3012,7 +3122,7 @@ async function facebookComment(page, targetUrl, commentText) {
     // If still not found, try clicking "Write a comment" text
     if (!commentBox) {
       console.log("🔍 Trying to click 'Write a comment' text...");
-      
+
       const commentTriggers = [
         'span:text("Write a comment")',
         'span:text("Write a comment...")',
@@ -3026,7 +3136,7 @@ async function facebookComment(page, targetUrl, commentText) {
             await elem.click({ timeout: 3000 });
             console.log("✅ Clicked comment trigger");
             await page.waitForTimeout(2000);
-            
+
             // Try finding comment box again after clicking
             for (const sel of commentSelectors) {
               const box = page.locator(sel).first();
@@ -3053,7 +3163,7 @@ async function facebookComment(page, targetUrl, commentText) {
         fullPage: true,
       });
       console.log(`📸 Screenshot saved: ${screenshotPath}`);
-      
+
       throw new Error("Facebook comment box not found - check screenshot");
     }
 
@@ -3061,7 +3171,7 @@ async function facebookComment(page, targetUrl, commentText) {
     console.log("📝 Writing comment...");
     await commentBox.scrollIntoViewIfNeeded();
     await page.waitForTimeout(1000);
-    
+
     await commentBox.click({ force: true });
     await page.waitForTimeout(1500);
 
@@ -3081,17 +3191,17 @@ async function facebookComment(page, targetUrl, commentText) {
       'div[aria-label="Press Enter to post"]',
       'div[aria-label="Comment"]',
       'div[aria-label="Post comment"]',
-      
+
       // Button/div with text
       'div[role="button"]:has-text("Comment")',
       'div[role="button"]:has-text("Post")',
       'button:has-text("Comment")',
       'button:has-text("Post")',
-      
+
       // SVG/Icon based (Facebook often uses icons)
       'div[aria-label="Post comment"] svg',
       'div[aria-label="Comment"] svg',
-      
+
       // Classes
       'div[role="button"].x1i10hfl',
     ];
@@ -3120,7 +3230,7 @@ async function facebookComment(page, targetUrl, commentText) {
         await page.keyboard.press("Enter");
         console.log("✅ Pressed Enter key");
         await page.waitForTimeout(5000);
-        
+
         return {
           success: true,
           message: "Facebook comment posted via Enter key",
@@ -3133,7 +3243,7 @@ async function facebookComment(page, targetUrl, commentText) {
           fullPage: true,
         });
         console.log(`📸 Screenshot saved: ${screenshotPath}`);
-        
+
         throw new Error("Facebook Post button not found and Enter key failed");
       }
     }
@@ -3142,7 +3252,7 @@ async function facebookComment(page, targetUrl, commentText) {
     console.log("📤 Clicking Post button...");
     await postBtn.scrollIntoViewIfNeeded();
     await page.waitForTimeout(500);
-    
+
     try {
       await postBtn.click({ timeout: 5000 });
     } catch (e) {
@@ -3183,7 +3293,9 @@ async function facebookComment(page, targetUrl, commentText) {
         path: `facebook-comment-error-${timestamp}.png`,
         fullPage: true,
       });
-      console.log(`📸 Error screenshot saved: facebook-comment-error-${timestamp}.png`);
+      console.log(
+        `📸 Error screenshot saved: facebook-comment-error-${timestamp}.png`
+      );
     } catch (screenshotError) {
       console.log("⚠️ Could not save error screenshot");
     }
@@ -3229,9 +3341,9 @@ async function twitterComment(page, targetUrl, commentText) {
       'div[aria-label="Tweet text"]',
       'div[contenteditable="true"][role="textbox"]',
       'div[contenteditable="true"][data-testid*="tweet"]',
-      'div.public-DraftEditor-content',
-      'div.DraftEditor-editorContainer',
-      
+      "div.public-DraftEditor-content",
+      "div.DraftEditor-editorContainer",
+
       // Alternative selectors
       'div[class*="public-DraftEditor"]',
       'div[data-contents="true"]',
@@ -3244,8 +3356,10 @@ async function twitterComment(page, targetUrl, commentText) {
     for (const sel of replyBoxSelectors) {
       try {
         const box = page.locator(sel).first();
-        const isVisible = await box.isVisible({ timeout: 3000 }).catch(() => false);
-        
+        const isVisible = await box
+          .isVisible({ timeout: 3000 })
+          .catch(() => false);
+
         if (isVisible) {
           replyBox = box;
           foundSelector = sel;
@@ -3260,7 +3374,7 @@ async function twitterComment(page, targetUrl, commentText) {
     // If not found, try clicking "Post your reply" or similar trigger
     if (!replyBox) {
       console.log("🔍 Reply box not visible, trying to activate it...");
-      
+
       const replyTriggers = [
         'div[data-testid="reply"]',
         'button[data-testid="reply"]',
@@ -3276,7 +3390,7 @@ async function twitterComment(page, targetUrl, commentText) {
             await elem.click({ timeout: 3000 });
             console.log("✅ Clicked reply trigger");
             await page.waitForTimeout(2000);
-            
+
             // Try finding reply box again after clicking
             for (const sel of replyBoxSelectors) {
               const box = page.locator(sel).first();
@@ -3287,7 +3401,7 @@ async function twitterComment(page, targetUrl, commentText) {
                 break;
               }
             }
-            
+
             if (replyBox) break;
           }
         } catch (e) {
@@ -3299,32 +3413,36 @@ async function twitterComment(page, targetUrl, commentText) {
     // Try JavaScript method to find reply box
     if (!replyBox) {
       console.log("🔍 Trying JavaScript method to find reply box...");
-      
+
       const foundViaJs = await page.evaluate(() => {
         // Find contenteditable divs
-        const editableDivs = Array.from(document.querySelectorAll('div[contenteditable="true"]'));
-        
+        const editableDivs = Array.from(
+          document.querySelectorAll('div[contenteditable="true"]')
+        );
+
         for (const div of editableDivs) {
-          const ariaLabel = div.getAttribute('aria-label') || '';
-          const testId = div.getAttribute('data-testid') || '';
-          
+          const ariaLabel = div.getAttribute("aria-label") || "";
+          const testId = div.getAttribute("data-testid") || "";
+
           if (
-            ariaLabel.includes('Post text') ||
-            ariaLabel.includes('Tweet text') ||
-            testId.includes('tweetTextarea')
+            ariaLabel.includes("Post text") ||
+            ariaLabel.includes("Tweet text") ||
+            testId.includes("tweetTextarea")
           ) {
-            div.setAttribute('data-target-reply-box', 'true');
+            div.setAttribute("data-target-reply-box", "true");
             return true;
           }
         }
-        
+
         // Fallback: find any contenteditable div in reply section
-        const allContentEditable = document.querySelectorAll('div[contenteditable="true"][role="textbox"]');
+        const allContentEditable = document.querySelectorAll(
+          'div[contenteditable="true"][role="textbox"]'
+        );
         if (allContentEditable.length > 0) {
-          allContentEditable[0].setAttribute('data-target-reply-box', 'true');
+          allContentEditable[0].setAttribute("data-target-reply-box", "true");
           return true;
         }
-        
+
         return false;
       });
 
@@ -3342,7 +3460,7 @@ async function twitterComment(page, targetUrl, commentText) {
         fullPage: true,
       });
       console.log(`📸 Screenshot saved: ${screenshotPath}`);
-      
+
       throw new Error("Twitter reply box not found - check screenshot");
     }
 
@@ -3350,19 +3468,19 @@ async function twitterComment(page, targetUrl, commentText) {
     console.log("📝 Writing reply...");
     await replyBox.scrollIntoViewIfNeeded();
     await page.waitForTimeout(1000);
-    
+
     // Click to focus
     try {
       await replyBox.click({ timeout: 5000 });
     } catch (e) {
       await replyBox.click({ force: true });
     }
-    
+
     await page.waitForTimeout(1500);
 
     // Type the comment with human-like delay
     let typingSuccessful = false;
-    
+
     // Method 1: Use Playwright's fill and type
     try {
       await replyBox.fill("");
@@ -3389,22 +3507,25 @@ async function twitterComment(page, targetUrl, commentText) {
     if (!typingSuccessful) {
       try {
         await page.evaluate((text) => {
-          const box = document.querySelector('[data-target-reply-box="true"]') ||
-                      document.querySelector('div[contenteditable="true"][role="textbox"]');
-          
+          const box =
+            document.querySelector('[data-target-reply-box="true"]') ||
+            document.querySelector(
+              'div[contenteditable="true"][role="textbox"]'
+            );
+
           if (box) {
             box.focus();
             box.textContent = text;
-            
+
             // Trigger input event
-            const inputEvent = new Event('input', { bubbles: true });
+            const inputEvent = new Event("input", { bubbles: true });
             box.dispatchEvent(inputEvent);
-            
+
             return true;
           }
           return false;
         }, commentText);
-        
+
         typingSuccessful = true;
         console.log("✅ Inserted comment using JavaScript");
       } catch (e) {
@@ -3427,13 +3548,13 @@ async function twitterComment(page, targetUrl, commentText) {
       'button[data-testid="tweetButtonInline"]',
       'div[data-testid="tweetButton"]',
       'div[data-testid="tweetButtonInline"]',
-      
+
       // Alternative selectors
       'button:has-text("Reply")',
       'div[role="button"]:has-text("Reply")',
       'button:has-text("Post")',
       'div[role="button"]:has-text("Post")',
-      
+
       // Aria labels
       'button[aria-label*="Reply"]',
       'button[aria-label*="Post"]',
@@ -3446,12 +3567,16 @@ async function twitterComment(page, targetUrl, commentText) {
     for (const sel of replyBtnSelectors) {
       try {
         const btn = page.locator(sel).first();
-        const isVisible = await btn.isVisible({ timeout: 3000 }).catch(() => false);
-        
+        const isVisible = await btn
+          .isVisible({ timeout: 3000 })
+          .catch(() => false);
+
         if (isVisible) {
           // Check if button is enabled
-          const isDisabled = await btn.getAttribute('disabled').catch(() => null);
-          
+          const isDisabled = await btn
+            .getAttribute("disabled")
+            .catch(() => null);
+
           if (isDisabled === null) {
             replyBtn = btn;
             replyBtnFound = true;
@@ -3467,27 +3592,29 @@ async function twitterComment(page, targetUrl, commentText) {
     // Try JavaScript method to find Reply button
     if (!replyBtn) {
       console.log("🔍 Trying JavaScript method to find Reply button...");
-      
+
       const foundBtnViaJs = await page.evaluate(() => {
-        const buttons = Array.from(document.querySelectorAll('button, div[role="button"]'));
-        
+        const buttons = Array.from(
+          document.querySelectorAll('button, div[role="button"]')
+        );
+
         for (const btn of buttons) {
-          const testId = btn.getAttribute('data-testid') || '';
-          const text = btn.textContent?.trim() || '';
-          const ariaLabel = btn.getAttribute('aria-label') || '';
-          
+          const testId = btn.getAttribute("data-testid") || "";
+          const text = btn.textContent?.trim() || "";
+          const ariaLabel = btn.getAttribute("aria-label") || "";
+
           if (
-            testId === 'tweetButton' ||
-            testId === 'tweetButtonInline' ||
-            (text === 'Reply' && !btn.disabled) ||
-            (text === 'Post' && !btn.disabled) ||
-            (ariaLabel.includes('Reply') && !btn.disabled)
+            testId === "tweetButton" ||
+            testId === "tweetButtonInline" ||
+            (text === "Reply" && !btn.disabled) ||
+            (text === "Post" && !btn.disabled) ||
+            (ariaLabel.includes("Reply") && !btn.disabled)
           ) {
-            btn.setAttribute('data-target-reply-btn', 'true');
+            btn.setAttribute("data-target-reply-btn", "true");
             return true;
           }
         }
-        
+
         return false;
       });
 
@@ -3506,7 +3633,7 @@ async function twitterComment(page, targetUrl, commentText) {
         fullPage: true,
       });
       console.log(`📸 Screenshot saved: ${screenshotPath}`);
-      
+
       throw new Error("Twitter Reply button not found - check screenshot");
     }
 
@@ -3514,9 +3641,9 @@ async function twitterComment(page, targetUrl, commentText) {
     console.log("📤 Clicking Reply button...");
     await replyBtn.scrollIntoViewIfNeeded();
     await page.waitForTimeout(500);
-    
+
     let replyClicked = false;
-    
+
     // Method 1: Normal click
     try {
       await replyBtn.click({ timeout: 5000 });
@@ -3541,8 +3668,9 @@ async function twitterComment(page, targetUrl, commentText) {
     if (!replyClicked) {
       try {
         await page.evaluate(() => {
-          const btn = document.querySelector('[data-target-reply-btn="true"]') ||
-                      document.querySelector('button[data-testid="tweetButton"]');
+          const btn =
+            document.querySelector('[data-target-reply-btn="true"]') ||
+            document.querySelector('button[data-testid="tweetButton"]');
           if (btn) {
             btn.click();
             return true;
@@ -3589,7 +3717,6 @@ async function twitterComment(page, targetUrl, commentText) {
         note: "Reply was submitted but verification pending. Check the tweet manually.",
       };
     }
-
   } catch (error) {
     console.error("❌ Twitter comment failed:", error.message);
 
@@ -3600,7 +3727,9 @@ async function twitterComment(page, targetUrl, commentText) {
         path: `twitter-comment-error-${timestamp}.png`,
         fullPage: true,
       });
-      console.log(`📸 Error screenshot saved: twitter-comment-error-${timestamp}.png`);
+      console.log(
+        `📸 Error screenshot saved: twitter-comment-error-${timestamp}.png`
+      );
     } catch (screenshotError) {
       console.log("⚠️ Could not save error screenshot");
     }
@@ -3622,7 +3751,7 @@ async function commentOnPost(page, platform, targetUrl, commentText) {
     if (platform === "facebook") {
       return await facebookComment(page, targetUrl, commentText);
     }
-     if (platform === "twitter") {
+    if (platform === "twitter") {
       return await twitterComment(page, targetUrl, commentText);
     }
     return {
@@ -3743,7 +3872,7 @@ async function linkedinFollow(page, targetUrl) {
     const closeSelectors = [
       '[aria-label="Dismiss"]',
       'button[aria-label="Dismiss"]',
-      '[data-test-modal-close-btn]',
+      "[data-test-modal-close-btn]",
     ];
 
     for (const selector of closeSelectors) {
@@ -3796,16 +3925,16 @@ async function linkedinFollow(page, targetUrl) {
       'button:has-text("Connect")',
       'button[aria-label*="Connect"]',
       'span:text-is("Connect")',
-      
+
       // Follow button (for following without connecting)
       'button:has-text("Follow")',
       'button[aria-label*="Follow"]',
       'span:text-is("Follow")',
-      
+
       // More specific selectors
       'div.pvs-profile-actions button:has-text("Connect")',
       'div.pvs-profile-actions button:has-text("Follow")',
-      
+
       // Action bar buttons
       'section.artdeco-card button:has-text("Connect")',
       'section.artdeco-card button:has-text("Follow")',
@@ -3821,12 +3950,16 @@ async function linkedinFollow(page, targetUrl) {
         if (await btn.isVisible({ timeout: 3000 })) {
           actionButton = btn;
           foundSelector = selector;
-          
+
           // Determine if it's Connect or Follow
           const buttonText = await btn.textContent();
-          actionType = buttonText.toLowerCase().includes('connect') ? 'connect' : 'follow';
-          
-          console.log(`✅ Found ${actionType} button with selector: ${selector}`);
+          actionType = buttonText.toLowerCase().includes("connect")
+            ? "connect"
+            : "follow";
+
+          console.log(
+            `✅ Found ${actionType} button with selector: ${selector}`
+          );
           break;
         }
       } catch (e) {
@@ -3837,7 +3970,7 @@ async function linkedinFollow(page, targetUrl) {
     // Try "More" dropdown if primary buttons not found
     if (!actionButton) {
       console.log("🔍 Trying 'More' dropdown...");
-      
+
       const moreButton = page.locator('button:has-text("More")').first();
       if (await moreButton.isVisible({ timeout: 3000 }).catch(() => false)) {
         await moreButton.click();
@@ -3856,10 +3989,12 @@ async function linkedinFollow(page, targetUrl) {
           if (await btn.isVisible({ timeout: 2000 }).catch(() => false)) {
             actionButton = btn;
             foundSelector = selector;
-            
+
             const buttonText = await btn.textContent();
-            actionType = buttonText.toLowerCase().includes('connect') ? 'connect' : 'follow';
-            
+            actionType = buttonText.toLowerCase().includes("connect")
+              ? "connect"
+              : "follow";
+
             console.log(`✅ Found ${actionType} in More dropdown: ${selector}`);
             break;
           }
@@ -3875,16 +4010,18 @@ async function linkedinFollow(page, targetUrl) {
         fullPage: true,
       });
       console.log(`📸 Screenshot saved: ${screenshotPath}`);
-      
-      throw new Error("LinkedIn Connect/Follow button not found - check screenshot");
+
+      throw new Error(
+        "LinkedIn Connect/Follow button not found - check screenshot"
+      );
     }
 
     // Click the Connect/Follow button
     console.log(`💼 Clicking ${actionType} button...`);
-    
+
     await actionButton.scrollIntoViewIfNeeded();
     await page.waitForTimeout(500);
-    
+
     try {
       await actionButton.hover({ timeout: 5000 });
       await page.waitForTimeout(300);
@@ -3897,7 +4034,7 @@ async function linkedinFollow(page, targetUrl) {
     await page.waitForTimeout(3000);
 
     // Handle "Connect" modal if it appears
-    if (actionType === 'connect') {
+    if (actionType === "connect") {
       console.log("🔍 Checking for connection request modal...");
 
       // Look for "Add a note" or "Send" button in modal
@@ -3943,7 +4080,13 @@ async function linkedinFollow(page, targetUrl) {
 
     let actionConfirmed = false;
     for (const indicator of successIndicators) {
-      if (await page.locator(indicator).first().isVisible({ timeout: 3000 }).catch(() => false)) {
+      if (
+        await page
+          .locator(indicator)
+          .first()
+          .isVisible({ timeout: 3000 })
+          .catch(() => false)
+      ) {
         actionConfirmed = true;
         console.log(`✅ Success confirmed - found: ${indicator}`);
         break;
@@ -3951,21 +4094,25 @@ async function linkedinFollow(page, targetUrl) {
     }
 
     if (!actionConfirmed) {
-      console.warn("⚠️ Success confirmation not detected - but action likely worked");
+      console.warn(
+        "⚠️ Success confirmation not detected - but action likely worked"
+      );
     }
 
-    const successMessage = actionType === 'connect' 
-      ? "Connection request sent successfully"
-      : "User followed successfully";
+    const successMessage =
+      actionType === "connect"
+        ? "Connection request sent successfully"
+        : "User followed successfully";
 
     console.log(`💼 LinkedIn ${actionType} successful`);
-    return { 
-      success: true, 
-      message: actionConfirmed ? successMessage : `${successMessage} (confirmation pending)`,
+    return {
+      success: true,
+      message: actionConfirmed
+        ? successMessage
+        : `${successMessage} (confirmation pending)`,
       action: actionType,
-      profile_url: targetUrl 
+      profile_url: targetUrl,
     };
-
   } catch (error) {
     console.error("❌ LinkedIn follow/connect failed:", error.message);
 
@@ -3976,7 +4123,9 @@ async function linkedinFollow(page, targetUrl) {
         path: `linkedin-follow-error-${timestamp}.png`,
         fullPage: true,
       });
-      console.log(`📸 Error screenshot saved: linkedin-follow-error-${timestamp}.png`);
+      console.log(
+        `📸 Error screenshot saved: linkedin-follow-error-${timestamp}.png`
+      );
     } catch (screenshotError) {
       console.log("⚠️ Could not save error screenshot");
     }
@@ -4013,19 +4162,23 @@ async function twitterFollow(page, targetUrl) {
 
     // Check if already following and find follow button
     const followStatus = await page.evaluate(() => {
-      const buttons = Array.from(document.querySelectorAll('button, div[role="button"], span[role="button"]'));
-      
+      const buttons = Array.from(
+        document.querySelectorAll(
+          'button, div[role="button"], span[role="button"]'
+        )
+      );
+
       for (const btn of buttons) {
-        const text = btn.textContent?.trim() || '';
-        const ariaLabel = btn.getAttribute('aria-label') || '';
-        const testId = btn.getAttribute('data-testid') || '';
-        
+        const text = btn.textContent?.trim() || "";
+        const ariaLabel = btn.getAttribute("aria-label") || "";
+        const testId = btn.getAttribute("data-testid") || "";
+
         // Check for "Following" state (already followed)
         if (
-          text === 'Following' ||
-          ariaLabel.includes('Following') ||
-          testId.endsWith('-unfollow') ||
-          (testId.includes('unfollow') && !testId.includes('follow-'))
+          text === "Following" ||
+          ariaLabel.includes("Following") ||
+          testId.endsWith("-unfollow") ||
+          (testId.includes("unfollow") && !testId.includes("follow-"))
         ) {
           return { isFollowing: true, foundButton: false };
         }
@@ -4033,22 +4186,22 @@ async function twitterFollow(page, targetUrl) {
 
       // Now look for Follow button
       for (const btn of buttons) {
-        const text = btn.textContent?.trim() || '';
-        const ariaLabel = btn.getAttribute('aria-label') || '';
-        const testId = btn.getAttribute('data-testid') || '';
-        
+        const text = btn.textContent?.trim() || "";
+        const ariaLabel = btn.getAttribute("aria-label") || "";
+        const testId = btn.getAttribute("data-testid") || "";
+
         // Check for "Follow" button (not "Following")
         if (
-          (text === 'Follow' && text !== 'Following') ||
-          (ariaLabel === 'Follow' && !ariaLabel.includes('Following')) ||
-          (testId.endsWith('-follow') && !testId.includes('unfollow'))
+          (text === "Follow" && text !== "Following") ||
+          (ariaLabel === "Follow" && !ariaLabel.includes("Following")) ||
+          (testId.endsWith("-follow") && !testId.includes("unfollow"))
         ) {
           // Mark this button for clicking
-          btn.setAttribute('data-target-follow-btn', 'true');
+          btn.setAttribute("data-target-follow-btn", "true");
           return { isFollowing: false, foundButton: true };
         }
       }
-      
+
       return { isFollowing: false, foundButton: false };
     });
 
@@ -4063,21 +4216,25 @@ async function twitterFollow(page, targetUrl) {
 
     if (!followStatus.foundButton) {
       console.log("❌ Follow button not found on page");
-      
+
       const screenshotPath = `twitter-no-follow-btn-${Date.now()}.png`;
       await page.screenshot({
         path: screenshotPath,
         fullPage: true,
       });
       console.log(`📸 Screenshot saved: ${screenshotPath}`);
-      
-      throw new Error("Twitter Follow button not found - user may be private or blocked");
+
+      throw new Error(
+        "Twitter Follow button not found - user may be private or blocked"
+      );
     }
 
     console.log("🔍 Follow button found, attempting to click...");
 
     // Get the marked button
-    const followButton = page.locator('[data-target-follow-btn="true"]').first();
+    const followButton = page
+      .locator('[data-target-follow-btn="true"]')
+      .first();
 
     // Scroll button into view
     await followButton.scrollIntoViewIfNeeded();
@@ -4085,7 +4242,7 @@ async function twitterFollow(page, targetUrl) {
 
     // Try to click with multiple strategies
     let clickSuccessful = false;
-    
+
     // Strategy 1: Normal click
     try {
       await followButton.hover({ timeout: 3000 });
@@ -4136,21 +4293,25 @@ async function twitterFollow(page, targetUrl) {
 
     // Verify follow was successful
     console.log("🔍 Verifying follow status...");
-    
+
     const followConfirmed = await page.evaluate(() => {
-      const buttons = Array.from(document.querySelectorAll('button, div[role="button"], span[role="button"]'));
+      const buttons = Array.from(
+        document.querySelectorAll(
+          'button, div[role="button"], span[role="button"]'
+        )
+      );
 
       for (const btn of buttons) {
-        const text = btn.textContent?.trim() || '';
-        const ariaLabel = btn.getAttribute('aria-label') || '';
-        const testId = btn.getAttribute('data-testid') || '';
+        const text = btn.textContent?.trim() || "";
+        const ariaLabel = btn.getAttribute("aria-label") || "";
+        const testId = btn.getAttribute("data-testid") || "";
 
         // Check if button now shows "Following"
         if (
-          text === 'Following' ||
-          ariaLabel.includes('Following') ||
-          testId.endsWith('-unfollow') ||
-          (testId.includes('unfollow') && !testId.includes('follow-'))
+          text === "Following" ||
+          ariaLabel.includes("Following") ||
+          testId.endsWith("-unfollow") ||
+          (testId.includes("unfollow") && !testId.includes("follow-"))
         ) {
           return true;
         }
@@ -4168,8 +4329,10 @@ async function twitterFollow(page, targetUrl) {
         profile_url: targetUrl,
       };
     } else {
-      console.warn("⚠️ Follow button was clicked but confirmation not detected");
-      
+      console.warn(
+        "⚠️ Follow button was clicked but confirmation not detected"
+      );
+
       // Take a screenshot for debugging
       const screenshotPath = `twitter-follow-unconfirmed-${Date.now()}.png`;
       await page.screenshot({
@@ -4177,7 +4340,7 @@ async function twitterFollow(page, targetUrl) {
         fullPage: true,
       });
       console.log(`📸 Screenshot saved: ${screenshotPath}`);
-      
+
       return {
         success: true,
         message: "Follow button clicked (awaiting confirmation)",
@@ -4186,7 +4349,6 @@ async function twitterFollow(page, targetUrl) {
         note: "Button was clicked but 'Following' status not yet detected. May need a few seconds.",
       };
     }
-
   } catch (error) {
     console.error("❌ Twitter follow failed:", error.message);
 
@@ -4197,7 +4359,9 @@ async function twitterFollow(page, targetUrl) {
         path: `twitter-follow-error-${timestamp}.png`,
         fullPage: true,
       });
-      console.log(`📸 Error screenshot saved: twitter-follow-error-${timestamp}.png`);
+      console.log(
+        `📸 Error screenshot saved: twitter-follow-error-${timestamp}.png`
+      );
     } catch (screenshotError) {
       console.log("⚠️ Could not save error screenshot");
     }
@@ -4220,11 +4384,9 @@ async function followUser(page, platform, targetUrl) {
       await facebookFollow(page, targetUrl);
     } else if (platform === "twitter") {
       await twitterFollow(page, targetUrl);
-    }
-    else if( platform === "linkedin") {
+    } else if (platform === "linkedin") {
       return await linkedinFollow(page, targetUrl);
-    }
-     else {
+    } else {
       throw new Error(`Platform ${platform} not supported`);
     }
 
@@ -4386,39 +4548,43 @@ async function twitterUnfollow(page, targetUrl) {
 
     // Check if currently following and find unfollow button
     const followStatus = await page.evaluate(() => {
-      const buttons = Array.from(document.querySelectorAll('button, div[role="button"], span[role="button"]'));
-      
+      const buttons = Array.from(
+        document.querySelectorAll(
+          'button, div[role="button"], span[role="button"]'
+        )
+      );
+
       for (const btn of buttons) {
-        const text = btn.textContent?.trim() || '';
-        const ariaLabel = btn.getAttribute('aria-label') || '';
-        const testId = btn.getAttribute('data-testid') || '';
-        
+        const text = btn.textContent?.trim() || "";
+        const ariaLabel = btn.getAttribute("aria-label") || "";
+        const testId = btn.getAttribute("data-testid") || "";
+
         // Check for "Following" state (can unfollow)
         if (
-          text === 'Following' ||
-          ariaLabel.includes('Following') ||
-          testId.endsWith('-unfollow') ||
-          (testId.includes('unfollow') && !testId.includes('follow-'))
+          text === "Following" ||
+          ariaLabel.includes("Following") ||
+          testId.endsWith("-unfollow") ||
+          (testId.includes("unfollow") && !testId.includes("follow-"))
         ) {
           // Mark this button for clicking
-          btn.setAttribute('data-target-unfollow-btn', 'true');
+          btn.setAttribute("data-target-unfollow-btn", "true");
           return { isFollowing: true, foundButton: true };
         }
       }
-      
+
       // Check if showing "Follow" button (not following)
       for (const btn of buttons) {
-        const text = btn.textContent?.trim() || '';
-        const testId = btn.getAttribute('data-testid') || '';
-        
+        const text = btn.textContent?.trim() || "";
+        const testId = btn.getAttribute("data-testid") || "";
+
         if (
-          text === 'Follow' ||
-          (testId.endsWith('-follow') && !testId.includes('unfollow'))
+          text === "Follow" ||
+          (testId.endsWith("-follow") && !testId.includes("unfollow"))
         ) {
           return { isFollowing: false, foundButton: false };
         }
       }
-      
+
       return { isFollowing: false, foundButton: false };
     });
 
@@ -4433,21 +4599,23 @@ async function twitterUnfollow(page, targetUrl) {
 
     if (!followStatus.foundButton) {
       console.log("❌ Following button not found on page");
-      
+
       const screenshotPath = `twitter-no-unfollow-btn-${Date.now()}.png`;
       await page.screenshot({
         path: screenshotPath,
         fullPage: true,
       });
       console.log(`📸 Screenshot saved: ${screenshotPath}`);
-      
+
       throw new Error("Twitter Following button not found");
     }
 
     console.log("🔍 Following button found, attempting to click...");
 
     // Get the marked button
-    const unfollowButton = page.locator('[data-target-unfollow-btn="true"]').first();
+    const unfollowButton = page
+      .locator('[data-target-unfollow-btn="true"]')
+      .first();
 
     // Scroll button into view
     await unfollowButton.scrollIntoViewIfNeeded();
@@ -4455,7 +4623,7 @@ async function twitterUnfollow(page, targetUrl) {
 
     // Click the Following button
     let clickSuccessful = false;
-    
+
     // Strategy 1: Normal click
     try {
       await unfollowButton.hover({ timeout: 3000 });
@@ -4482,7 +4650,9 @@ async function twitterUnfollow(page, targetUrl) {
     if (!clickSuccessful) {
       try {
         await page.evaluate(() => {
-          const btn = document.querySelector('[data-target-unfollow-btn="true"]');
+          const btn = document.querySelector(
+            '[data-target-unfollow-btn="true"]'
+          );
           if (btn) {
             btn.click();
             return true;
@@ -4497,7 +4667,9 @@ async function twitterUnfollow(page, targetUrl) {
     }
 
     if (!clickSuccessful) {
-      throw new Error("Failed to click Following button after multiple attempts");
+      throw new Error(
+        "Failed to click Following button after multiple attempts"
+      );
     }
 
     // Wait for confirmation modal to appear
@@ -4519,7 +4691,7 @@ async function twitterUnfollow(page, targetUrl) {
       try {
         const btn = page.locator(selector).first();
         const isVisible = await btn.isVisible({ timeout: 5000 });
-        
+
         if (isVisible) {
           confirmButton = btn;
           console.log(`✅ Found confirmation button: ${selector}`);
@@ -4532,26 +4704,28 @@ async function twitterUnfollow(page, targetUrl) {
 
     if (!confirmButton) {
       console.log("⚠️ Confirmation button not found, trying JavaScript...");
-      
+
       // Try to find and click confirmation via JavaScript
       const jsConfirmed = await page.evaluate(() => {
         // Look for modal dialog
-        const dialogs = document.querySelectorAll('[role="dialog"], [data-testid="confirmationSheetDialog"]');
-        
+        const dialogs = document.querySelectorAll(
+          '[role="dialog"], [data-testid="confirmationSheetDialog"]'
+        );
+
         for (const dialog of dialogs) {
           const buttons = dialog.querySelectorAll('button, div[role="button"]');
-          
+
           for (const btn of buttons) {
-            const text = btn.textContent?.trim() || '';
-            const testId = btn.getAttribute('data-testid') || '';
-            
-            if (text === 'Unfollow' || testId === 'confirmationSheetConfirm') {
+            const text = btn.textContent?.trim() || "";
+            const testId = btn.getAttribute("data-testid") || "";
+
+            if (text === "Unfollow" || testId === "confirmationSheetConfirm") {
               btn.click();
               return true;
             }
           }
         }
-        
+
         return false;
       });
 
@@ -4587,20 +4761,24 @@ async function twitterUnfollow(page, targetUrl) {
 
     // Verify unfollow was successful
     console.log("🔍 Verifying unfollow status...");
-    
+
     const unfollowConfirmed = await page.evaluate(() => {
-      const buttons = Array.from(document.querySelectorAll('button, div[role="button"], span[role="button"]'));
+      const buttons = Array.from(
+        document.querySelectorAll(
+          'button, div[role="button"], span[role="button"]'
+        )
+      );
 
       for (const btn of buttons) {
-        const text = btn.textContent?.trim() || '';
-        const ariaLabel = btn.getAttribute('aria-label') || '';
-        const testId = btn.getAttribute('data-testid') || '';
+        const text = btn.textContent?.trim() || "";
+        const ariaLabel = btn.getAttribute("aria-label") || "";
+        const testId = btn.getAttribute("data-testid") || "";
 
         // Check if button now shows "Follow" (not following anymore)
         if (
-          (text === 'Follow' && text !== 'Following') ||
-          (ariaLabel === 'Follow' && !ariaLabel.includes('Following')) ||
-          (testId.endsWith('-follow') && !testId.includes('unfollow'))
+          (text === "Follow" && text !== "Following") ||
+          (ariaLabel === "Follow" && !ariaLabel.includes("Following")) ||
+          (testId.endsWith("-follow") && !testId.includes("unfollow"))
         ) {
           return true;
         }
@@ -4618,8 +4796,10 @@ async function twitterUnfollow(page, targetUrl) {
         profile_url: targetUrl,
       };
     } else {
-      console.warn("⚠️ Unfollow action completed but confirmation not detected");
-      
+      console.warn(
+        "⚠️ Unfollow action completed but confirmation not detected"
+      );
+
       // Take a screenshot for debugging
       const screenshotPath = `twitter-unfollow-unconfirmed-${Date.now()}.png`;
       await page.screenshot({
@@ -4627,7 +4807,7 @@ async function twitterUnfollow(page, targetUrl) {
         fullPage: true,
       });
       console.log(`📸 Screenshot saved: ${screenshotPath}`);
-      
+
       return {
         success: true,
         message: "Unfollow action completed (awaiting confirmation)",
@@ -4636,7 +4816,6 @@ async function twitterUnfollow(page, targetUrl) {
         note: "Unfollow was executed but 'Follow' status not yet detected. May need a few seconds.",
       };
     }
-
   } catch (error) {
     console.error("❌ Twitter unfollow failed:", error.message);
 
@@ -4647,7 +4826,9 @@ async function twitterUnfollow(page, targetUrl) {
         path: `twitter-unfollow-error-${timestamp}.png`,
         fullPage: true,
       });
-      console.log(`📸 Error screenshot saved: twitter-unfollow-error-${timestamp}.png`);
+      console.log(
+        `📸 Error screenshot saved: twitter-unfollow-error-${timestamp}.png`
+      );
     } catch (screenshotError) {
       console.log("⚠️ Could not save error screenshot");
     }
@@ -4676,7 +4857,6 @@ async function unfollowUser(page, platform, targetUrl) {
     if (platform === "twitter" || platform === "x") {
       return await twitterUnfollow(page, targetUrl);
     }
-
 
     return {
       success: false,
