@@ -52,7 +52,7 @@ const LOGIN_URL = {
   instagram: "https://www.instagram.com/accounts/login/",
   facebook: "https://www.facebook.com/login/",
   youtube: "https://accounts.google.com",
-  tiktok: "https://www.tiktok.com/login",
+  tiktok: "https://www.tiktok.com/login/phone-or-email/email",
   twitter: "https://twitter.com/login",
   linkedin: "https://www.linkedin.com/login",
 };
@@ -378,6 +378,12 @@ let activeContexts = {};
 // });
 
 // Modified /login-social endpoint (proxy parameters removed)
+
+
+// At the top of your server.js file
+
+
+// LOGIN ENDPOINT - Replace your existing app.post("/login-social"...)
 app.post("/login-social", async (req, res) => {
   const { username, password, platform, account_id } = req.body;
 
@@ -441,13 +447,10 @@ app.post("/login-social", async (req, res) => {
         await page.waitForSelector('input[name="username"]', {
           timeout: 30000,
         });
-
         await page.fill('input[name="username"]', username);
         await page.fill('input[name="password"]', password);
-
         await page.click('button[type="submit"]');
         await page.waitForTimeout(5000);
-
         await page.click("text=Not now").catch(() => {});
         await page.click('button:has-text("Not Now")').catch(() => {});
         break;
@@ -459,253 +462,277 @@ app.post("/login-social", async (req, res) => {
         await page.click('button[name="login"]');
         await page.waitForTimeout(5000);
         break;
-      // ========== TWITTER LOGIN CASE (Replace in your server.js) ==========
-case "twitter":
-  console.log("🐦 Starting Twitter login flow...");
-  
-  // Extract email and username from request
-  const twitterEmail = req.body.email || username; // Email for step 1
-  const twitterUsername = req.body.twitter_username || username; // Username for step 2
-  
-  console.log("📧 Using email:", twitterEmail);
-  console.log("👤 Using username:", twitterUsername);
 
-  await page.waitForTimeout(3000);
+      case "twitter":
+        console.log("🐦 Starting Twitter login flow...");
+        const twitterEmail = req.body.email || username;
+        const twitterUsername = req.body.twitter_username || username;
+        console.log("📧 Using email:", twitterEmail);
+        console.log("👤 Using username:", twitterUsername);
 
-  // ========== STEP 1: Enter Email/Phone ==========
-  console.log("📧 STEP 1: Entering email/phone...");
-  
-  const emailSelectors = [
-    'input[autocomplete="username"]',
-    'input[name="text"]',
-    'input[type="text"]',
-    'input[autocomplete="email"]',
-  ];
+        await page.waitForTimeout(3000);
 
-  let emailEntered = false;
-  for (const selector of emailSelectors) {
-    try {
-      const input = await page.waitForSelector(selector, { 
-        timeout: 5000, 
-        state: 'visible' 
-      });
-      
-      if (input) {
-        await input.click();
-        await page.waitForTimeout(500);
-        await input.fill(twitterEmail);
-        console.log("✅ Email/phone entered successfully");
-        emailEntered = true;
-        break;
-      }
-    } catch (e) {
-      console.log(`⚠️ Selector ${selector} not found, trying next...`);
-      continue;
-    }
-  }
+        // STEP 1: Enter Email
+        console.log("📧 STEP 1: Entering email...");
+        const emailSelectors = [
+          'input[autocomplete="username"]',
+          'input[name="text"]',
+          'input[type="text"]',
+          'input[autocomplete="email"]',
+        ];
 
-  if (!emailEntered) {
-    await page.screenshot({
-      path: `twitter-step1-failed-${Date.now()}.png`,
-      fullPage: true,
-    });
-    throw new Error("Could not find email/phone input field - check screenshot");
-  }
+        let emailEntered = false;
+        for (const selector of emailSelectors) {
+          try {
+            const input = await page.waitForSelector(selector, {
+              timeout: 5000,
+              state: "visible",
+            });
+            if (input) {
+              await input.click();
+              await page.waitForTimeout(500);
+              await input.fill(twitterEmail);
+              console.log("✅ Email entered successfully");
+              emailEntered = true;
+              break;
+            }
+          } catch (e) {
+            continue;
+          }
+        }
 
-  // Click Next button after email
-  await page.waitForTimeout(1000);
-  
-  try {
-    const nextButton1 = page.locator('div[role="button"]:has-text("Next")').first();
-    if (await nextButton1.isVisible({ timeout: 3000 })) {
-      await nextButton1.click();
-      console.log("✅ Clicked Next button after email");
-    } else {
-      await page.keyboard.press("Enter");
-      console.log("✅ Pressed Enter after email");
-    }
-  } catch (e) {
-    await page.keyboard.press("Enter");
-    console.log("✅ Pressed Enter after email (fallback)");
-  }
+        if (!emailEntered) {
+          throw new Error("Could not find email input field");
+        }
 
-  await page.waitForTimeout(4000);
-
-  // ========== STEP 2: Enter Username (Twitter Handle) ==========
-  console.log("👤 STEP 2: Checking for username verification...");
-  
-  const usernameSelectors = [
-    'input[data-testid="ocfEnterTextTextInput"]',
-    'input[name="text"]',
-    'input[type="text"]',
-  ];
-
-  let usernameEntered = false;
-  
-  for (const selector of usernameSelectors) {
-    try {
-      const usernameInput = await page.waitForSelector(selector, { 
-        timeout: 5000, 
-        state: 'visible' 
-      });
-      
-      if (usernameInput) {
-        console.log("📱 Username verification screen detected");
-        await usernameInput.click();
-        await page.waitForTimeout(500);
-        
-        // Clean username (remove @ if present)
-        const cleanUsername = twitterUsername.replace('@', '');
-        await usernameInput.fill(cleanUsername);
-        console.log("✅ Username entered:", cleanUsername);
-        usernameEntered = true;
-        
-        // Click Next after username
         await page.waitForTimeout(1000);
-        
         try {
-          const nextButton2 = page.locator('div[role="button"]:has-text("Next")').first();
-          if (await nextButton2.isVisible({ timeout: 3000 })) {
-            await nextButton2.click();
-            console.log("✅ Clicked Next button after username");
+          const nextButton1 = page.locator('div[role="button"]:has-text("Next")').first();
+          if (await nextButton1.isVisible({ timeout: 3000 })) {
+            await nextButton1.click();
           } else {
             await page.keyboard.press("Enter");
-            console.log("✅ Pressed Enter after username");
           }
         } catch (e) {
           await page.keyboard.press("Enter");
-          console.log("✅ Pressed Enter after username (fallback)");
         }
-        
+
         await page.waitForTimeout(4000);
+
+        // STEP 2: Enter Username (if required)
+        console.log("👤 STEP 2: Checking for username verification...");
+        const usernameSelectors = [
+          'input[data-testid="ocfEnterTextTextInput"]',
+          'input[name="text"]',
+          'input[type="text"]',
+        ];
+
+        let usernameEntered = false;
+        for (const selector of usernameSelectors) {
+          try {
+            const usernameInput = await page.waitForSelector(selector, {
+              timeout: 5000,
+              state: "visible",
+            });
+            if (usernameInput) {
+              console.log("📱 Username verification detected");
+              await usernameInput.click();
+              await page.waitForTimeout(500);
+              const cleanUsername = twitterUsername.replace("@", "");
+              await usernameInput.fill(cleanUsername);
+              console.log("✅ Username entered:", cleanUsername);
+              usernameEntered = true;
+
+              await page.waitForTimeout(1000);
+              try {
+                const nextButton2 = page.locator('div[role="button"]:has-text("Next")').first();
+                if (await nextButton2.isVisible({ timeout: 3000 })) {
+                  await nextButton2.click();
+                } else {
+                  await page.keyboard.press("Enter");
+                }
+              } catch (e) {
+                await page.keyboard.press("Enter");
+              }
+              await page.waitForTimeout(4000);
+              break;
+            }
+          } catch (e) {
+            continue;
+          }
+        }
+
+        // STEP 3: Enter Password
+        console.log("🔐 STEP 3: Entering password...");
+        const passwordSelectors = [
+          'input[name="password"]',
+          'input[type="password"]',
+          'input[autocomplete="current-password"]',
+        ];
+
+        let passwordEntered = false;
+        for (const selector of passwordSelectors) {
+          try {
+            const input = await page.waitForSelector(selector, {
+              timeout: 8000,
+              state: "visible",
+            });
+            if (input) {
+              await input.click();
+              await page.waitForTimeout(500);
+              await input.fill(password);
+              console.log("✅ Password entered successfully");
+              passwordEntered = true;
+              break;
+            }
+          } catch (e) {
+            continue;
+          }
+        }
+
+        if (!passwordEntered) {
+          throw new Error("Could not find password input field");
+        }
+
+        await page.waitForTimeout(1500);
+        const loginButtonSelectors = [
+          'div[data-testid="LoginForm_Login_Button"]',
+          'div[role="button"]:has-text("Log in")',
+          'button:has-text("Log in")',
+        ];
+
+        let loginClicked = false;
+        for (const selector of loginButtonSelectors) {
+          try {
+            const btn = page.locator(selector).first();
+            if (await btn.isVisible({ timeout: 3000 })) {
+              await btn.click();
+              console.log("✅ Clicked Log in button");
+              loginClicked = true;
+              break;
+            }
+          } catch (e) {
+            continue;
+          }
+        }
+
+        if (!loginClicked) {
+          await page.keyboard.press("Enter");
+        }
+
+        await page.waitForTimeout(8000);
+        console.log("✅ Twitter login successful!");
         break;
-      }
-    } catch (e) {
-      console.log(`⚠️ Username selector ${selector} not found, trying next...`);
-      continue;
-    }
-  }
 
-  if (usernameEntered) {
-    console.log("✅ Username verification step completed");
-  } else {
-    console.log("ℹ️ No username verification required, proceeding to password");
-  }
-
-  // ========== STEP 3: Enter Password ==========
-  console.log("🔐 STEP 3: Entering password...");
-
-  const passwordSelectors = [
-    'input[name="password"]',
-    'input[type="password"]',
-    'input[autocomplete="current-password"]',
-  ];
-
-  let passwordEntered = false;
-  for (const selector of passwordSelectors) {
-    try {
-      const input = await page.waitForSelector(selector, { 
-        timeout: 8000, 
-        state: 'visible' 
-      });
-      
-      if (input) {
-        await input.click();
-        await page.waitForTimeout(500);
-        await input.fill(password);
-        console.log("✅ Password entered successfully");
-        passwordEntered = true;
-        break;
-      }
-    } catch (e) {
-      console.log(`⚠️ Password selector ${selector} not found, trying next...`);
-      continue;
-    }
-  }
-
-  if (!passwordEntered) {
-    await page.screenshot({
-      path: `twitter-password-failed-${Date.now()}.png`,
-      fullPage: true,
-    });
-    throw new Error("Could not find password input field - check screenshot");
-  }
-
-  // Click Log in button
-  await page.waitForTimeout(1500);
-
-  const loginButtonSelectors = [
-    'div[data-testid="LoginForm_Login_Button"]',
-    'div[role="button"]:has-text("Log in")',
-    'button:has-text("Log in")',
-    'span:has-text("Log in")',
-  ];
-
-  let loginClicked = false;
-  for (const selector of loginButtonSelectors) {
-    try {
-      const btn = page.locator(selector).first();
-      if (await btn.isVisible({ timeout: 3000 })) {
-        await btn.click();
-        console.log("✅ Clicked Log in button");
-        loginClicked = true;
-        break;
-      }
-    } catch (e) {
-      console.log(`⚠️ Login button ${selector} not found, trying next...`);
-      continue;
-    }
-  }
-
-  if (!loginClicked) {
-    console.log("⚠️ Log in button not found, trying Enter key...");
-    await page.keyboard.press("Enter");
-  }
-
-  // Wait for login to complete
-  console.log("⏳ Waiting for login to complete...");
-  await page.waitForTimeout(8000);
-
-  // Verify login success
-  const currentUrl = page.url();
-  console.log("📍 Current URL after login:", currentUrl);
-
-  if (currentUrl.includes("/login") || currentUrl.includes("/i/flow/login")) {
-    // Check for various error messages
-    const errors = [
-      { selector: 'span:has-text("Wrong password")', message: "Wrong password" },
-      { selector: 'span:has-text("unusual login activity")', message: "Unusual login activity detected" },
-      { selector: 'span:has-text("suspended")', message: "Account suspended" },
-    ];
-
-    for (const error of errors) {
-      const errorVisible = await page.locator(error.selector)
-        .isVisible({ timeout: 2000 })
-        .catch(() => false);
-      
-      if (errorVisible) {
-        throw new Error(`Twitter login failed: ${error.message}`);
-      }
-    }
-
-    // Take screenshot for debugging
-    await page.screenshot({
-      path: `twitter-login-failed-${Date.now()}.png`,
-      fullPage: true,
-    });
-
-    throw new Error("Twitter login failed - still on login page. Check screenshot.");
-  }
-
-  console.log("✅ Twitter login successful!");
-  console.log("🎉 Redirected to:", currentUrl);
-  break;
       case "tiktok":
-        await page.waitForTimeout(3000);
-        await page.fill('input[name="username"]', username);
-        await page.fill('input[name="password"]', password);
-        await page.click("button");
-        await page.waitForTimeout(5000);
+        console.log("🎵 Starting TikTok login flow...");
+        const tiktokEmail = req.body.email || username;
+        console.log("📧 Using email:", tiktokEmail);
+
+        await page.waitForTimeout(4000);
+
+        // Enter Email
+        const tiktokEmailSelectors = [
+          'input[type="text"]',
+          'input[name="email"]',
+          'input[placeholder*="email" i]',
+        ];
+
+        let tiktokEmailEntered = false;
+        for (const selector of tiktokEmailSelectors) {
+          try {
+            const input = await page.waitForSelector(selector, {
+              timeout: 5000,
+              state: "visible",
+            });
+            if (input) {
+              await input.click();
+              await page.waitForTimeout(500);
+              await input.fill(tiktokEmail);
+              console.log("✅ Email entered");
+              tiktokEmailEntered = true;
+              break;
+            }
+          } catch (e) {
+            continue;
+          }
+        }
+
+        if (!tiktokEmailEntered) {
+          throw new Error("Could not find TikTok email input");
+        }
+
+        // Enter Password
+        const tiktokPasswordSelectors = [
+          'input[type="password"]',
+          'input[name="password"]',
+        ];
+
+        let tiktokPasswordEntered = false;
+        for (const selector of tiktokPasswordSelectors) {
+          try {
+            const input = await page.waitForSelector(selector, {
+              timeout: 5000,
+              state: "visible",
+            });
+            if (input) {
+              await input.click();
+              await page.waitForTimeout(500);
+              await input.fill(password);
+              console.log("✅ Password entered");
+              tiktokPasswordEntered = true;
+              break;
+            }
+          } catch (e) {
+            continue;
+          }
+        }
+
+        if (!tiktokPasswordEntered) {
+          throw new Error("Could not find TikTok password input");
+        }
+
+        // Click Login
+        await page.waitForTimeout(1000);
+        const tiktokLoginSelectors = [
+          'button[type="submit"]',
+          'button:has-text("Log in")',
+          'button[data-e2e="login-button"]',
+        ];
+
+        let tiktokLoginClicked = false;
+        for (const selector of tiktokLoginSelectors) {
+          try {
+            const btn = page.locator(selector).first();
+            if (await btn.isVisible({ timeout: 3000 })) {
+              await btn.click();
+              console.log("✅ Clicked login button");
+              tiktokLoginClicked = true;
+              break;
+            }
+          } catch (e) {
+            continue;
+          }
+        }
+
+        if (!tiktokLoginClicked) {
+          await page.keyboard.press("Enter");
+        }
+
+        await page.waitForTimeout(8000);
+
+        // Check for CAPTCHA
+        const captchaVisible = await page
+          .locator('div:has-text("Verify")')
+          .isVisible({ timeout: 3000 })
+          .catch(() => false);
+
+        if (captchaVisible) {
+          console.log("⚠️ CAPTCHA detected - waiting 45 seconds...");
+          await page.waitForTimeout(45000);
+        }
+
+        console.log("✅ TikTok login completed!");
         break;
 
       case "linkedin":
@@ -720,7 +747,6 @@ case "twitter":
         await page.waitForSelector('input[type="email"]', { timeout: 20000 });
         await page.fill("input[type=email]", username);
         await page.keyboard.press("Enter");
-
         await page.waitForTimeout(3000);
         await page.fill("input[type=password]", password);
         await page.keyboard.press("Enter");
