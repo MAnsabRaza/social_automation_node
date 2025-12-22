@@ -6436,103 +6436,58 @@ async function tiktokUnfollow(page, targetUrl) {
     });
 
     console.log("⏳ TikTok profile loaded, waiting for content...");
-    await page.waitForTimeout(4000);
+    await page.waitForTimeout(5000);
 
     // Scroll to ensure profile buttons are loaded
     await page.evaluate(() => {
-      window.scrollBy(0, 200);
+      window.scrollTo(0, 0);
     });
-    await page.waitForTimeout(1500);
+    await page.waitForTimeout(2000);
 
-    console.log("🔍 Looking for Following button next to Message button...");
+    console.log("🔍 Looking for Following button...");
 
-    // Find and check the follow status - specifically looking for button near Message button
+    // Find and check the follow status with improved detection
     const followStatus = await page.evaluate(() => {
-      // Find the Message button first
-      const allButtons = Array.from(document.querySelectorAll('button, div[role="button"]'));
+      const allButtons = Array.from(document.querySelectorAll('button, div[role="button"], [role="button"]'));
       
-      let messageButton = null;
+      console.log(`Total buttons found: ${allButtons.length}`);
+      
       let followingButton = null;
       let followButton = null;
       
-      // First, find the Message button
+      // Search through all buttons for Following or Follow
       for (const btn of allButtons) {
         const text = btn.textContent?.trim() || "";
-        if (text === "Message") {
-          messageButton = btn;
-          console.log("✅ Found Message button");
+        const rect = btn.getBoundingClientRect();
+        
+        // Check if button is visible and in the upper part of the page (profile area)
+        const isVisible = rect.width > 0 && rect.height > 0;
+        const isInProfileArea = rect.top < 400 && rect.top > 50;
+        
+        console.log(`Button: "${text}" | Visible: ${isVisible} | Top: ${rect.top} | Left: ${rect.left}`);
+        
+        // Look for "Following" button (exact match, case-sensitive)
+        if (isVisible && isInProfileArea && text === "Following") {
+          console.log("✅ Found Following button");
+          followingButton = btn;
+          followingButton.setAttribute('data-following-btn', 'true');
+          followingButton.scrollIntoView({ behavior: 'smooth', block: 'center' });
           break;
         }
       }
       
-      if (!messageButton) {
-        console.log("⚠️ Message button not found");
-        // If no Message button, look for buttons in header area with horizontal position check
+      // If no Following button, check for Follow button
+      if (!followingButton) {
         for (const btn of allButtons) {
           const text = btn.textContent?.trim() || "";
           const rect = btn.getBoundingClientRect();
           
-          // Check if button is in profile header (top area) and horizontally positioned (left side)
-          const isInHeader = rect.top < 300 && rect.top > 80 && rect.left > 400;
+          const isVisible = rect.width > 0 && rect.height > 0;
+          const isInProfileArea = rect.top < 400 && rect.top > 50;
           
-          console.log("Checking button:", { 
-            text, 
-            top: rect.top,
-            left: rect.left,
-            isInHeader
-          });
-          
-          if (isInHeader && text === "Following") {
-            console.log("✅ Found Following button in header area");
-            followingButton = btn;
-            break;
-          }
-          
-          if (isInHeader && text === "Follow" && !text.includes("Following")) {
-            console.log("ℹ️ Found Follow button in header area");
-            followButton = btn;
-            break;
-          }
-        }
-      } else {
-        // We found Message button, now look for Following/Follow button near it
-        const messageRect = messageButton.getBoundingClientRect();
-        console.log("Message button position:", { 
-          top: messageRect.top, 
-          left: messageRect.left,
-          right: messageRect.right 
-        });
-        
-        for (const btn of allButtons) {
-          if (btn === messageButton) continue;
-          
-          const text = btn.textContent?.trim() || "";
-          const rect = btn.getBoundingClientRect();
-          
-          // Check if button is in the same horizontal row as Message button
-          // Following button should be to the left of Message button
-          const isSameRow = Math.abs(rect.top - messageRect.top) < 50;
-          const isLeftOfMessage = rect.right <= messageRect.left + 10; // 10px tolerance
-          const isNearby = Math.abs(rect.right - messageRect.left) < 100; // Within 100px
-          
-          console.log("Checking nearby button:", { 
-            text, 
-            top: rect.top,
-            left: rect.left,
-            right: rect.right,
-            isSameRow,
-            isLeftOfMessage,
-            isNearby
-          });
-          
-          if (isSameRow && isLeftOfMessage && text === "Following") {
-            console.log("✅ Found Following button next to Message");
-            followingButton = btn;
-            break;
-          }
-          
-          if (isSameRow && isLeftOfMessage && text === "Follow" && !text.includes("Following")) {
-            console.log("ℹ️ Found Follow button next to Message");
+          // Look for "Follow" button (not following yet)
+          if (isVisible && isInProfileArea && text === "Follow") {
+            console.log("ℹ️ Found Follow button");
             followButton = btn;
             break;
           }
@@ -6540,28 +6495,35 @@ async function tiktokUnfollow(page, targetUrl) {
       }
       
       if (followingButton) {
-        followingButton.setAttribute('data-following-btn', 'true');
-        followingButton.scrollIntoView({ behavior: 'smooth', block: 'center' });
         return { found: true, isFollowing: true };
       }
       
       if (followButton) {
-        console.log("ℹ️ Button shows 'Follow' - not currently following");
+        console.log("ℹ️ User is not following this account");
         return { found: true, isFollowing: false };
       }
       
       return { found: false, isFollowing: false };
     });
 
-    console.log("Follow status:", followStatus);
+    console.log("📊 Follow status:", followStatus);
 
     if (!followStatus.found) {
+      // Take debug screenshot
       const screenshotPath = `tiktok-no-follow-btn-${Date.now()}.png`;
       await page.screenshot({
         path: screenshotPath,
         fullPage: true,
       });
       console.log(`📸 Screenshot saved: ${screenshotPath}`);
+      
+      // Log all button texts for debugging
+      const buttonTexts = await page.evaluate(() => {
+        const btns = Array.from(document.querySelectorAll('button, div[role="button"], [role="button"]'));
+        return btns.map(b => b.textContent?.trim()).filter(t => t && t.length < 50);
+      });
+      console.log("🔍 All button texts found:", buttonTexts);
+      
       throw new Error("Following/Follow button not found on profile");
     }
 
@@ -6577,21 +6539,21 @@ async function tiktokUnfollow(page, targetUrl) {
 
     // Click the "Following" button to open dropdown menu
     console.log("🖱️ Clicking Following button...");
-    await page.waitForTimeout(1000);
+    await page.waitForTimeout(1500);
 
     let clickSuccess = false;
 
-    // Try clicking with locator
+    // Method 1: Try clicking with locator
     try {
       const followingBtn = page.locator('[data-following-btn="true"]').first();
       await followingBtn.click({ timeout: 5000 });
       clickSuccess = true;
       console.log("✅ Clicked Following button (locator)");
     } catch (e) {
-      console.log("⚠️ Locator click failed, trying JavaScript...");
+      console.log("⚠️ Locator click failed, trying alternative methods...");
     }
 
-    // Try JavaScript click
+    // Method 2: Try JavaScript click
     if (!clickSuccess) {
       try {
         await page.evaluate(() => {
@@ -6609,22 +6571,40 @@ async function tiktokUnfollow(page, targetUrl) {
       }
     }
 
+    // Method 3: Force click
+    if (!clickSuccess) {
+      try {
+        const followingBtn = page.locator('[data-following-btn="true"]').first();
+        await followingBtn.click({ force: true, timeout: 5000 });
+        clickSuccess = true;
+        console.log("✅ Clicked Following button (force)");
+      } catch (e) {
+        console.log("⚠️ Force click failed");
+      }
+    }
+
     if (!clickSuccess) {
       throw new Error("Failed to click Following button");
     }
 
     // Wait for dropdown menu to appear
     console.log("⏳ Waiting for unfollow menu to appear...");
-    await page.waitForTimeout(2000);
+    await page.waitForTimeout(3000);
+
+    // Take screenshot after clicking to see menu
+    await page.screenshot({
+      path: `tiktok-menu-opened-${Date.now()}.png`,
+      fullPage: true,
+    });
 
     // Find and click "Unfollow" option in the menu
     console.log("🔍 Looking for Unfollow option in menu...");
 
     const unfollowFound = await page.evaluate(() => {
-      // Look for all clickable elements that appeared (menu items)
-      const allElements = document.querySelectorAll(
-        'div[role="menuitem"], div[role="button"], button, span[role="button"]'
-      );
+      // Look for all possible elements that could contain "Unfollow"
+      const allElements = Array.from(document.querySelectorAll(
+        'div[role="menuitem"], div[role="button"], button, span, div, p'
+      ));
       
       console.log(`Checking ${allElements.length} elements for Unfollow option`);
       
@@ -6633,30 +6613,20 @@ async function tiktokUnfollow(page, targetUrl) {
         const rect = el.getBoundingClientRect();
         const isVisible = rect.width > 0 && rect.height > 0;
         
-        console.log("Checking element:", { text, isVisible });
-        
-        // Look for "Unfollow" text in visible elements
+        // Look for exact "Unfollow" text
         if (isVisible && text === "Unfollow") {
-          console.log("✅ Found Unfollow option");
+          console.log("✅ Found Unfollow option:", {
+            tag: el.tagName,
+            text: text,
+            top: rect.top,
+            left: rect.left
+          });
           el.setAttribute('data-unfollow-option', 'true');
           return true;
         }
       }
       
-      // Fallback: look in any element containing "Unfollow"
-      const allDivs = document.querySelectorAll('div, span');
-      for (const div of allDivs) {
-        const text = div.textContent?.trim() || "";
-        const rect = div.getBoundingClientRect();
-        const isVisible = rect.width > 0 && rect.height > 0;
-        
-        if (isVisible && text === "Unfollow") {
-          console.log("✅ Found Unfollow in fallback search");
-          div.setAttribute('data-unfollow-option', 'true');
-          return true;
-        }
-      }
-      
+      console.log("⚠️ Unfollow option not found in initial search");
       return false;
     });
 
@@ -6667,16 +6637,31 @@ async function tiktokUnfollow(page, targetUrl) {
         fullPage: true,
       });
       console.log(`📸 Screenshot saved: ${screenshotPath}`);
+      
+      // Log what we found instead
+      const menuContent = await page.evaluate(() => {
+        const elements = Array.from(document.querySelectorAll('div, span, button'));
+        return elements
+          .filter(el => {
+            const rect = el.getBoundingClientRect();
+            return rect.width > 0 && rect.height > 0;
+          })
+          .map(el => el.textContent?.trim())
+          .filter(t => t && t.length < 30 && t.length > 0)
+          .slice(0, 20);
+      });
+      console.log("🔍 Visible text content:", menuContent);
+      
       throw new Error("Unfollow option not found in menu");
     }
 
     console.log("🖱️ Clicking Unfollow option...");
-    await page.waitForTimeout(800);
+    await page.waitForTimeout(1000);
 
     // Click the Unfollow option
     let unfollowClickSuccess = false;
 
-    // Try locator click
+    // Method 1: Try locator click
     try {
       const unfollowOption = page.locator('[data-unfollow-option="true"]').first();
       await unfollowOption.click({ timeout: 5000 });
@@ -6686,7 +6671,7 @@ async function tiktokUnfollow(page, targetUrl) {
       console.log("⚠️ Locator click failed, trying JavaScript...");
     }
 
-    // Try JavaScript click
+    // Method 2: Try JavaScript click
     if (!unfollowClickSuccess) {
       try {
         await page.evaluate(() => {
@@ -6704,50 +6689,54 @@ async function tiktokUnfollow(page, targetUrl) {
       }
     }
 
+    // Method 3: Force click
+    if (!unfollowClickSuccess) {
+      try {
+        const unfollowOption = page.locator('[data-unfollow-option="true"]').first();
+        await unfollowOption.click({ force: true, timeout: 5000 });
+        unfollowClickSuccess = true;
+        console.log("✅ Clicked Unfollow option (force)");
+      } catch (e) {
+        console.log("⚠️ Force click failed");
+      }
+    }
+
     if (!unfollowClickSuccess) {
       throw new Error("Failed to click Unfollow option");
     }
 
     // Wait for unfollow action to complete
     console.log("⏳ Waiting for unfollow to complete...");
-    await page.waitForTimeout(3000);
+    await page.waitForTimeout(4000);
 
     // Verify by checking if button changed to "Follow"
     console.log("🔍 Verifying unfollow...");
+    
     const verified = await page.evaluate(() => {
-      // Find Message button again
-      const allButtons = Array.from(document.querySelectorAll('button, div[role="button"]'));
-      let messageButton = null;
+      const allButtons = Array.from(document.querySelectorAll('button, div[role="button"], [role="button"]'));
       
       for (const btn of allButtons) {
         const text = btn.textContent?.trim() || "";
-        if (text === "Message") {
-          messageButton = btn;
-          break;
-        }
-      }
-      
-      if (messageButton) {
-        const messageRect = messageButton.getBoundingClientRect();
+        const rect = btn.getBoundingClientRect();
         
-        for (const btn of allButtons) {
-          if (btn === messageButton) continue;
-          
-          const text = btn.textContent?.trim() || "";
-          const rect = btn.getBoundingClientRect();
-          
-          const isSameRow = Math.abs(rect.top - messageRect.top) < 50;
-          const isLeftOfMessage = rect.right <= messageRect.left + 10;
-          
-          if (isSameRow && isLeftOfMessage && text === "Follow" && !text.includes("Following")) {
-            console.log("✅ Verified: Button now shows 'Follow'");
-            return true;
-          }
+        const isVisible = rect.width > 0 && rect.height > 0;
+        const isInProfileArea = rect.top < 400 && rect.top > 50;
+        
+        // Check if button now shows "Follow" (not "Following")
+        if (isVisible && isInProfileArea && text === "Follow") {
+          console.log("✅ Verified: Button now shows 'Follow'");
+          return true;
         }
       }
       
-      console.log("⚠️ Verification: 'Follow' button not found");
+      console.log("⚠️ Verification: 'Follow' button not found yet");
       return false;
+    });
+
+    // Take verification screenshot
+    await page.screenshot({
+      path: `tiktok-unfollow-verify-${Date.now()}.png`,
+      fullPage: true,
     });
 
     if (verified) {
@@ -6760,18 +6749,13 @@ async function tiktokUnfollow(page, targetUrl) {
       };
     } else {
       console.warn("⚠️ Unfollow action completed but verification uncertain");
-      
-      // Take screenshot for debugging
-      await page.screenshot({
-        path: `tiktok-unfollow-unverified-${Date.now()}.png`,
-        fullPage: true,
-      });
 
       return {
         success: true,
         message: "Unfollow action completed (verification pending)",
         verified: false,
         profile_url: targetUrl,
+        note: "Action was performed but button state not yet updated. Please check profile to confirm.",
       };
     }
 
