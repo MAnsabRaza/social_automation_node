@@ -58,332 +58,7 @@ const LOGIN_URL = {
 };
 let activeBrowsers = {}; // store browsers and pages
 let activeContexts = {};
-
-// app.post("/login-social", async (req, res) => {
-//   const {
-//     username,
-//     password,
-//     platform,
-//     account_id,
-//     proxy_host,
-//     proxy_port,
-//     proxy_username,
-//     proxy_password,
-//   } = req.body;
-
-//   if (!LOGIN_URL[platform]) {
-//     return res.json({ success: false, message: "Platform not supported" });
-//   }
-
-//   console.log(`🌐 Login attempt → ${platform} | Account ID: ${account_id}`);
-
-//   try {
-//     // Reuse session if browser is already running
-//     if (activeBrowsers[account_id]) {
-//       const context = activeContexts[account_id];
-//       const storageState = await context.storageState();
-
-//       return res.json({
-//         success: true,
-//         message: "Already logged in - session reused",
-//         sessionData: JSON.stringify(storageState),
-//         cookies: storageState.cookies,
-//         authToken: extractAuthToken(storageState.cookies, platform),
-//       });
-//     }
-
-//     // Launch new browser
-//     const browser = await chromium.launch({
-//       headless: true,
-//       proxy: proxy_host
-//         ? {
-//             server: `http://${proxy_host}:${proxy_port}`,
-//             username: proxy_username || undefined,
-//             password: proxy_password || undefined,
-//           }
-//         : undefined,
-//     });
-
-//     const context = await browser.newContext({
-//       userAgent:
-//         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36",
-//       locale: "en-US",
-//       timezoneId: "America/New_York",
-//       permissions: ["geolocation", "notifications"],
-//     });
-
-//     activeBrowsers[account_id] = browser;
-//     activeContexts[account_id] = context;
-
-//     const page = await context.newPage();
-
-//     console.log("⏳ Loading login page...");
-
-//     // FIX: Instagram never reaches "networkidle" → replaced
-//     await page.goto(LOGIN_URL[platform], {
-//       waitUntil: "domcontentloaded",
-//       timeout: 60000,
-//     });
-
-//     await page.waitForTimeout(2500); // Let IG/FB scripts load
-
-//     // --------------------------
-//     //     PLATFORM LOGINS
-//     // --------------------------
-
-//     switch (platform) {
-//       case "instagram":
-//         await page.waitForSelector('input[name="username"]', {
-//           timeout: 30000,
-//         });
-
-//         await page.fill('input[name="username"]', username);
-//         await page.fill('input[name="password"]', password);
-
-//         await page.click('button[type="submit"]');
-
-//         // Wait for login redirect
-//         await page.waitForTimeout(5000);
-
-//         // Dismiss popups
-//         await page.click("text=Not now").catch(() => {});
-//         await page.click('button:has-text("Not Now")').catch(() => {});
-
-//         break;
-
-//       case "facebook":
-//         await page.waitForSelector("#email", { timeout: 20000 });
-//         await page.fill("#email", username);
-//         await page.fill("#pass", password);
-//         await page.click('button[name="login"]');
-//         break;
-
-//       case "twitter":
-//         await page.waitForSelector('input[name="text"]', { timeout: 20000 });
-//         await page.fill('input[name="text"]', username);
-//         await page.keyboard.press("Enter");
-
-//         await page.waitForTimeout(3000);
-//         await page.fill('input[name="password"]', password);
-//         await page.keyboard.press("Enter");
-//         break;
-
-//       case "tiktok":
-//         await page.waitForTimeout(3000);
-//         await page.fill('input[name="username"]', username);
-//         await page.fill('input[name="password"]', password);
-//         await page.click("button");
-//         break;
-
-//       case "linkedin":
-//         await page.waitForSelector("#username", { timeout: 20000 });
-//         await page.fill("#username", username);
-//         await page.fill("#password", password);
-//         await page.click('button[type="submit"]');
-//         break;
-
-//       case "youtube":
-//         await page.waitForSelector('input[type="email"]', { timeout: 20000 });
-//         await page.fill("input[type=email]", username);
-//         await page.keyboard.press("Enter");
-
-//         await page.waitForTimeout(3000);
-//         await page.fill("input[type=password]", password);
-//         await page.keyboard.press("Enter");
-//         break;
-//     }
-
-//     // Allow cookie/session setup
-//     await page.waitForTimeout(5000);
-
-//     // Save session
-//     const storageState = await context.storageState();
-//     const authToken = extractAuthToken(storageState.cookies, platform);
-
-//     console.log(`✅ Login successful → ${account_id}`);
-
-//     return res.json({
-//       success: true,
-//       message: "Login successful",
-//       sessionData: JSON.stringify(storageState),
-//       cookies: storageState.cookies,
-//       authToken: authToken,
-//     });
-//   } catch (error) {
-//     console.error("❌ Login failed:", error.message);
-
-//     return res.json({
-//       success: false,
-//       message: "Login error",
-//       error: error.message,
-//     });
-//   }
-// });
-// // --------------- CHECK LOGIN STATUS -------------------
-// app.post("/check-login", async (req, res) => {
-//   const {
-//     platform,
-//     cookies,
-//     sessionData,
-//     proxy_host,
-//     proxy_port,
-//     proxy_username,
-//     proxy_password,
-//   } = req.body;
-
-//   if (!cookies || !sessionData) {
-//     return res.json({
-//       success: false,
-//       isLoggedIn: false,
-//       message: "No session data found",
-//     });
-//   }
-
-//   try {
-//     const browser = await chromium.launch({
-//       headless: true,
-//       proxy: proxy_host
-//         ? {
-//             server: `http://${proxy_host}:${proxy_port}`,
-//             username: proxy_username || undefined,
-//             password: proxy_password || undefined,
-//           }
-//         : undefined,
-//     });
-
-//     const parsedSessionData = JSON.parse(sessionData);
-//     const context = await browser.newContext({
-//       storageState: parsedSessionData,
-//     });
-//     const page = await context.newPage();
-
-//     // Check if logged in by navigating to home page
-//     const homeUrls = {
-//       instagram: "https://www.instagram.com/",
-//       facebook: "https://www.facebook.com/",
-//       twitter: "https://twitter.com/home",
-//       linkedin: "https://www.linkedin.com/feed/",
-//       youtube: "https://www.youtube.com/",
-//       tiktok: "https://www.tiktok.com/foryou",
-//     };
-
-//     await page.goto(homeUrls[platform] || LOGIN_URL[platform], {
-//       timeout: 30000,
-//     });
-//     await page.waitForTimeout(3000);
-
-//     const currentUrl = page.url();
-//     const isLoggedIn =
-//       !currentUrl.includes("/login") && !currentUrl.includes("/signin");
-
-//     await browser.close();
-
-//     res.json({ success: true, isLoggedIn });
-//   } catch (error) {
-//     console.log(error);
-//     res.json({ success: false, isLoggedIn: false, error: error.message });
-//   }
-// });
-
-// app.post("/execute-task", async (req, res) => {
-//   const { task, account } = req.body;
-
-//   console.log("📋 Executing Task:", task);
-
-//   if (!task || !account) {
-//     return res.json({
-//       success: false,
-//       message: "Missing task or account data",
-//     });
-//   }
-
-//   const platform = account.platform;
-//   const taskType = task.task_type;
-
-//   try {
-//     let browser, context, page;
-
-//     if (activeBrowsers[account.id]) {
-//       console.log("♻️ Reusing existing browser session");
-//       browser = activeBrowsers[account.id];
-//       context = activeContexts[account.id];
-//       page = await context.newPage();
-//     } else {
-//       console.log("🚀 Launching new browser session");
-
-//       let storageState = null;
-//       if (account.session_data) {
-//         try {
-//           storageState = JSON.parse(account.session_data);
-//         } catch {}
-//       }
-
-//       browser = await chromium.launch({
-//         headless: false,
-//         proxy: account.proxy_id
-//           ? {
-//               server: `http://${account.proxy.host}:${account.proxy.port}`,
-//               username: account.proxy.username || undefined,
-//               password: account.proxy.password || undefined,
-//             }
-//           : undefined,
-//       });
-
-//       context = await browser.newContext({
-//         storageState,
-//         userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/129.0.0.0",
-//         locale: "en-US",
-//       });
-
-//       activeBrowsers[account.id] = browser;
-//       activeContexts[account.id] = context;
-
-//       page = await context.newPage();
-//     }
-
-//     // ✅ POST TASK
-//     if (taskType === "post") {
-//       return res.json(await createPost(page, platform, task));
-//     }
-
-//     if (taskType === "follow") {
-//       return res.json(await followUser(page, platform, task.target_url));
-//     }
-
-//     if (taskType === "unfollow") {
-//       return res.json(await unfollowUser(page, platform, task.target_url));
-//     }
-
-//     if (taskType === "like") {
-//       const result = await likePost(page, platform, task.target_url);
-//       return res.json(result);
-//     }
-//     if (taskType === "comment") {
-//       return res.json(
-//         await commentOnPost(page, platform, task.target_url, task.comment)
-//       );
-//     }
-
-//     return res.json({
-//       success: false,
-//       message: `Task type ${taskType} not supported`,
-//     });
-//   } catch (error) {
-//     console.error("❌ Task execution failed:", error.message);
-//     return res.json({
-//       success: false,
-//       message: error.message,
-//     });
-//   }
-// });
-
-// Modified /login-social endpoint (proxy parameters removed)
-
-
-// At the top of your server.js file
-
-
-// LOGIN ENDPOINT - Replace your existing app.post("/login-social"...)
+const activeScrollBots = {}; 
 app.post("/login-social", async (req, res) => {
   const { username, password, platform, account_id } = req.body;
 
@@ -507,7 +182,9 @@ app.post("/login-social", async (req, res) => {
 
         await page.waitForTimeout(1000);
         try {
-          const nextButton1 = page.locator('div[role="button"]:has-text("Next")').first();
+          const nextButton1 = page
+            .locator('div[role="button"]:has-text("Next")')
+            .first();
           if (await nextButton1.isVisible({ timeout: 3000 })) {
             await nextButton1.click();
           } else {
@@ -545,7 +222,9 @@ app.post("/login-social", async (req, res) => {
 
               await page.waitForTimeout(1000);
               try {
-                const nextButton2 = page.locator('div[role="button"]:has-text("Next")').first();
+                const nextButton2 = page
+                  .locator('div[role="button"]:has-text("Next")')
+                  .first();
                 if (await nextButton2.isVisible({ timeout: 3000 })) {
                   await nextButton2.click();
                 } else {
@@ -866,8 +545,8 @@ app.post("/execute-task", async (req, res) => {
       }
 
       browser = await chromium.launch({
-        headless: false, // Browser will be visible
-        slowMo: 100, // Slow down operations by 100ms for visibility
+        headless: false,
+        slowMo: 100,
         args: [
           "--no-sandbox",
           "--disable-setuid-sandbox",
@@ -916,6 +595,24 @@ app.post("/execute-task", async (req, res) => {
       );
     }
 
+    // 🔥 UNLIMITED AUTO-SCROLL
+    if (taskType === "share" || taskType === "scroll") {
+      if (platform === "instagram") {
+        // Start scroll bot in background
+        instagramScrollBot(page, account.id, {
+          likeChance: task.likeChance || 30,
+          commentChance: task.commentChance || 8,
+          comments: task.comments || undefined,
+        });
+
+        return res.json({
+          success: true,
+          message: "Instagram unlimited scrolling started",
+          info: "Bot will run until you call /stop-scroll",
+        });
+      }
+    }
+
     return res.json({
       success: false,
       message: `Task type ${taskType} not supported`,
@@ -928,6 +625,7 @@ app.post("/execute-task", async (req, res) => {
     });
   }
 });
+
 
 // Add endpoint to close browser for an account
 app.post("/close-browser", async (req, res) => {
@@ -962,10 +660,10 @@ async function createPost(page, platform, task) {
     if (platform === "twitter") {
       return await createTwitterPost(page, task);
     }
-    if(platform === "linkedin") {
+    if (platform === "linkedin") {
       return await createLinkedInPost(page, task);
     }
-    if(platform === "tiktok") {
+    if (platform === "tiktok") {
       return await createTikTokPost(page, task);
     }
 
@@ -2111,16 +1809,18 @@ async function createTikTokPost(page, postContent) {
     // METHOD 1: Try clicking "Select video" button and use file input
     try {
       console.log("📍 Method 1: Looking for 'Select video' button...");
-      
-      const selectVideoButton = page.locator('button:has-text("Select video")').first();
+
+      const selectVideoButton = page
+        .locator('button:has-text("Select video")')
+        .first();
       const buttonExists = await selectVideoButton.count();
-      
+
       if (buttonExists > 0) {
         console.log("✅ Found 'Select video' button");
-        
+
         // Find the file input (it should be in the DOM but hidden)
         const fileInput = await page.locator('input[type="file"]').first();
-        
+
         // Set the file directly on the hidden input
         await fileInput.setInputFiles(absoluteVideoPath);
         console.log("✅ Video uploaded via hidden file input");
@@ -2134,10 +1834,10 @@ async function createTikTokPost(page, postContent) {
     if (!videoUploaded) {
       try {
         console.log("📍 Method 2: Looking for any file input...");
-        
+
         const allFileInputs = await page.locator('input[type="file"]').all();
         console.log(`Found ${allFileInputs.length} file input(s)`);
-        
+
         if (allFileInputs.length > 0) {
           await allFileInputs[0].setInputFiles(absoluteVideoPath);
           console.log("✅ Video uploaded via first file input");
@@ -2152,16 +1852,16 @@ async function createTikTokPost(page, postContent) {
     if (!videoUploaded) {
       try {
         console.log("📍 Method 3: Using JavaScript to find file input...");
-        
+
         const foundViaJs = await page.evaluate(() => {
           const inputs = document.querySelectorAll('input[type="file"]');
           console.log(`Found ${inputs.length} file inputs via JavaScript`);
-          
+
           if (inputs.length > 0) {
             inputs[0].setAttribute("data-video-upload", "true");
             return true;
           }
-          
+
           return false;
         });
 
@@ -2180,30 +1880,31 @@ async function createTikTokPost(page, postContent) {
     if (!videoUploaded) {
       try {
         console.log("📍 Method 4: Looking for drag-and-drop zone...");
-        
+
         // Look for the iframe or drag zone
         const dragZoneSelectors = [
           'iframe[title*="upload"]',
           'div[role="button"]',
-          '.upload-card',
+          ".upload-card",
           '[class*="upload"]',
         ];
 
         for (const selector of dragZoneSelectors) {
           const element = page.locator(selector).first();
           const exists = await element.count();
-          
+
           if (exists > 0) {
             console.log(`Found potential drag zone: ${selector}`);
-            
+
             // Try to find file input within or near this element
             const nearbyInput = await page.evaluate((sel) => {
               const zone = document.querySelector(sel);
               if (zone) {
-                const input = zone.querySelector('input[type="file"]') || 
-                             zone.parentElement?.querySelector('input[type="file"]') ||
-                             document.querySelector('input[type="file"]');
-                
+                const input =
+                  zone.querySelector('input[type="file"]') ||
+                  zone.parentElement?.querySelector('input[type="file"]') ||
+                  document.querySelector('input[type="file"]');
+
                 if (input) {
                   input.setAttribute("data-drag-upload", "true");
                   return true;
@@ -2230,14 +1931,14 @@ async function createTikTokPost(page, postContent) {
     if (!videoUploaded) {
       try {
         console.log("📍 Method 5: Checking for iframe...");
-        
+
         const frames = page.frames();
         console.log(`Found ${frames.length} frames`);
-        
+
         for (const frame of frames) {
           try {
             const frameInputs = await frame.locator('input[type="file"]').all();
-            
+
             if (frameInputs.length > 0) {
               console.log(`Found file input in frame: ${frame.url()}`);
               await frameInputs[0].setInputFiles(absoluteVideoPath);
@@ -2262,62 +1963,73 @@ async function createTikTokPost(page, postContent) {
         fullPage: true,
       });
       console.log(`📸 Screenshot saved: ${screenshotPath}`);
-      
+
       // Log page content for debugging
       const pageContent = await page.evaluate(() => {
-        const inputs = Array.from(document.querySelectorAll('input[type="file"]'));
-        const buttons = Array.from(document.querySelectorAll('button'));
-        
+        const inputs = Array.from(
+          document.querySelectorAll('input[type="file"]')
+        );
+        const buttons = Array.from(document.querySelectorAll("button"));
+
         return {
           url: window.location.href,
-          fileInputs: inputs.map(i => ({
+          fileInputs: inputs.map((i) => ({
             id: i.id,
             class: i.className,
             accept: i.accept,
-            visible: i.offsetParent !== null
+            visible: i.offsetParent !== null,
           })),
-          buttons: buttons.map(b => ({
-            text: b.textContent?.trim(),
-            class: b.className
-          })).slice(0, 10) // First 10 buttons
+          buttons: buttons
+            .map((b) => ({
+              text: b.textContent?.trim(),
+              class: b.className,
+            }))
+            .slice(0, 10), // First 10 buttons
         };
       });
-      
+
       console.log("📋 Page analysis:", JSON.stringify(pageContent, null, 2));
-      
-      throw new Error("TikTok upload input not found - check screenshot and logs");
+
+      throw new Error(
+        "TikTok upload input not found - check screenshot and logs"
+      );
     }
 
     // 4️⃣ Wait for video to upload and process (20-25 seconds)
     console.log("⏳ Waiting for video to upload and process...");
     console.log("⏱️  This will take approximately 20-25 seconds...");
-    
+
     // Initial upload wait - 10 seconds
     await page.waitForTimeout(10000);
     console.log("⏳ Upload in progress... (10s elapsed)");
-    
+
     // Continue waiting - another 10 seconds
     await page.waitForTimeout(10000);
     console.log("⏳ Processing video... (20s elapsed)");
-    
+
     // Final buffer - 5 seconds
     await page.waitForTimeout(5000);
     console.log("⏳ Finalizing... (25s elapsed)");
 
     // Wait for video preview to appear
     console.log("🔍 Waiting for video preview...");
-    
+
     try {
-      await page.waitForSelector('video, canvas, div[class*="video-preview"], div[class*="preview"]', {
-        timeout: 30000,
-      });
+      await page.waitForSelector(
+        'video, canvas, div[class*="video-preview"], div[class*="preview"]',
+        {
+          timeout: 30000,
+        }
+      );
       console.log("✅ Video preview loaded");
     } catch (e) {
-      console.log("⚠️ Video preview not detected after 30s, checking if upload succeeded...");
-      
+      console.log(
+        "⚠️ Video preview not detected after 30s, checking if upload succeeded..."
+      );
+
       // Check if we've moved past upload screen
       const currentUrl = page.url();
-      if (!currentUrl.includes('Select video')) {
+      if (!currentUrl.includes("Select video")) {
         console.log("✅ Appears to have progressed past upload screen");
       }
     }
@@ -2335,7 +2047,7 @@ async function createTikTokPost(page, postContent) {
       'textarea[placeholder*="caption"]',
       'div[data-text*="escription"]',
       'div[role="textbox"]',
-      'textarea',
+      "textarea",
     ];
 
     let captionField = null;
@@ -2344,10 +2056,12 @@ async function createTikTokPost(page, postContent) {
       try {
         const field = page.locator(selector).first();
         const count = await field.count();
-        
+
         if (count > 0) {
-          const isVisible = await field.isVisible({ timeout: 2000 }).catch(() => false);
-          
+          const isVisible = await field
+            .isVisible({ timeout: 2000 })
+            .catch(() => false);
+
           if (isVisible) {
             captionField = field;
             console.log(`✅ Found caption field: ${selector}`);
@@ -2375,14 +2089,16 @@ async function createTikTokPost(page, postContent) {
         }
 
         // Look for textareas
-        const textareas = Array.from(document.querySelectorAll('textarea'));
+        const textareas = Array.from(document.querySelectorAll("textarea"));
         if (textareas.length > 0) {
           textareas[0].setAttribute("data-target-caption", "true");
           return true;
         }
 
         // Look for role=textbox
-        const textboxes = Array.from(document.querySelectorAll('[role="textbox"]'));
+        const textboxes = Array.from(
+          document.querySelectorAll('[role="textbox"]')
+        );
         if (textboxes.length > 0) {
           textboxes[0].setAttribute("data-target-caption", "true");
           return true;
@@ -2404,7 +2120,9 @@ async function createTikTokPost(page, postContent) {
         fullPage: true,
       });
       console.log(`📸 Screenshot saved: ${screenshotPath}`);
-      console.log("⚠️ Caption field not found - will try to post without caption");
+      console.log(
+        "⚠️ Caption field not found - will try to post without caption"
+      );
     }
 
     // 6️⃣ Add caption if field was found
@@ -2432,33 +2150,36 @@ async function createTikTokPost(page, postContent) {
         try {
           await captionField.fill("");
           await page.waitForTimeout(300);
-          await captionField.type(fullCaption, { delay: 50 + Math.random() * 100 });
+          await captionField.type(fullCaption, {
+            delay: 50 + Math.random() * 100,
+          });
           console.log("✅ Caption typed successfully");
         } catch (e) {
           console.log("⚠️ Typing failed, trying paste method...");
-          
+
           // Try paste method
           await page.evaluate((text) => {
-            const field = document.querySelector('[data-target-caption="true"]') ||
-                         document.querySelector('div[contenteditable="true"]') ||
-                         document.querySelector('textarea') ||
-                         document.querySelector('[role="textbox"]');
+            const field =
+              document.querySelector('[data-target-caption="true"]') ||
+              document.querySelector('div[contenteditable="true"]') ||
+              document.querySelector("textarea") ||
+              document.querySelector('[role="textbox"]');
 
             if (field) {
               field.focus();
-              
-              if (field.tagName === 'TEXTAREA' || field.tagName === 'INPUT') {
+
+              if (field.tagName === "TEXTAREA" || field.tagName === "INPUT") {
                 field.value = text;
               } else {
                 field.textContent = text;
               }
 
               // Trigger events
-              field.dispatchEvent(new Event('input', { bubbles: true }));
-              field.dispatchEvent(new Event('change', { bubbles: true }));
+              field.dispatchEvent(new Event("input", { bubbles: true }));
+              field.dispatchEvent(new Event("change", { bubbles: true }));
             }
           }, fullCaption);
-          
+
           console.log("✅ Caption inserted via JavaScript");
         }
 
@@ -2486,20 +2207,24 @@ async function createTikTokPost(page, postContent) {
       try {
         const btn = page.locator(selector).first();
         const count = await btn.count();
-        
+
         if (count > 0) {
-          const isVisible = await btn.isVisible({ timeout: 2000 }).catch(() => false);
-          
+          const isVisible = await btn
+            .isVisible({ timeout: 2000 })
+            .catch(() => false);
+
           if (isVisible) {
             // Check if enabled
             const isDisabled = await btn.isDisabled().catch(() => false);
-            
+
             if (!isDisabled) {
               postButton = btn;
               console.log(`✅ Found enabled Post button: ${selector}`);
               break;
             } else {
-              console.log(`⚠️ Found Post button but it's disabled: ${selector}`);
+              console.log(
+                `⚠️ Found Post button but it's disabled: ${selector}`
+              );
             }
           }
         }
@@ -2514,17 +2239,23 @@ async function createTikTokPost(page, postContent) {
 
       const foundBtnViaJs = await page.evaluate(() => {
         const buttons = Array.from(
-          document.querySelectorAll('button, div[role="button"], [role="button"]')
+          document.querySelectorAll(
+            'button, div[role="button"], [role="button"]'
+          )
         );
 
         for (const btn of buttons) {
           const text = btn.textContent?.trim().toLowerCase() || "";
-          const disabled = btn.disabled || 
-                          btn.getAttribute("disabled") !== null ||
-                          btn.getAttribute("aria-disabled") === "true" ||
-                          btn.classList.contains('disabled');
+          const disabled =
+            btn.disabled ||
+            btn.getAttribute("disabled") !== null ||
+            btn.getAttribute("aria-disabled") === "true" ||
+            btn.classList.contains("disabled");
 
-          if ((text.includes('post') || text.includes('publish')) && !disabled) {
+          if (
+            (text.includes("post") || text.includes("publish")) &&
+            !disabled
+          ) {
             btn.setAttribute("data-target-post-btn", "true");
             return true;
           }
@@ -2565,17 +2296,18 @@ async function createTikTokPost(page, postContent) {
       console.log("✅ Post button clicked");
     } catch (e) {
       console.log("⚠️ Normal click failed, trying alternative methods...");
-      
+
       try {
         await postButton.click({ force: true });
         postClicked = true;
         console.log("✅ Post button clicked (force)");
       } catch (e2) {
         await page.evaluate(() => {
-          const btn = document.querySelector('[data-target-post-btn="true"]') ||
-                      Array.from(document.querySelectorAll('button')).find(b => 
-                        b.textContent?.toLowerCase().includes('post')
-                      );
+          const btn =
+            document.querySelector('[data-target-post-btn="true"]') ||
+            Array.from(document.querySelectorAll("button")).find((b) =>
+              b.textContent?.toLowerCase().includes("post")
+            );
           if (btn) btn.click();
         });
         postClicked = true;
@@ -2589,43 +2321,48 @@ async function createTikTokPost(page, postContent) {
       return {
         url: window.location.href,
         bodyText: document.body.textContent?.substring(0, 500),
-        visibleButtons: Array.from(document.querySelectorAll('button')).map(b => b.textContent?.trim()).slice(0, 5)
+        visibleButtons: Array.from(document.querySelectorAll("button"))
+          .map((b) => b.textContent?.trim())
+          .slice(0, 5),
       };
     });
-    console.log("📊 Page state after Post click:", JSON.stringify(pageState, null, 2));
+    console.log(
+      "📊 Page state after Post click:",
+      JSON.stringify(pageState, null, 2)
+    );
 
     // 9️⃣ Wait for post to complete and verify
     console.log("⏳ Waiting for video to post...");
-    
+
     // Wait longer for TikTok to process
     await page.waitForTimeout(5000);
-    
+
     // Check multiple times over 30 seconds for success indicators
     let postSuccess = false;
     let attempts = 0;
     const maxAttempts = 6; // Check every 5 seconds for 30 seconds total
-    
+
     while (attempts < maxAttempts && !postSuccess) {
       attempts++;
       console.log(`🔍 Verification attempt ${attempts}/${maxAttempts}...`);
-      
+
       const checkResult = await page.evaluate(() => {
         const successIndicators = [
-          'your video is being uploaded',
-          'video uploaded',
-          'post successful',
-          'posted',
-          'upload successful',
-          'successfully posted',
-          'your video is processing',
-          'video is being processed',
-          'posting',
-          'uploading'
+          "your video is being uploaded",
+          "video uploaded",
+          "post successful",
+          "posted",
+          "upload successful",
+          "successfully posted",
+          "your video is processing",
+          "video is being processed",
+          "posting",
+          "uploading",
         ];
 
         const bodyText = document.body.textContent?.toLowerCase() || "";
         const currentUrl = window.location.href;
-        
+
         // Check for success text
         for (const indicator of successIndicators) {
           if (bodyText.includes(indicator)) {
@@ -2634,31 +2371,42 @@ async function createTikTokPost(page, postContent) {
         }
 
         // Check if redirected away from upload page (strong indicator of success)
-        if (!currentUrl.includes('/upload') && !currentUrl.includes('/tiktokstudio/upload')) {
-          return { success: true, indicator: 'redirected away from upload', url: currentUrl };
+        if (
+          !currentUrl.includes("/upload") &&
+          !currentUrl.includes("/tiktokstudio/upload")
+        ) {
+          return {
+            success: true,
+            indicator: "redirected away from upload",
+            url: currentUrl,
+          };
         }
 
         // Check if Post button disappeared (means it was submitted)
         const postButtons = Array.from(
           document.querySelectorAll('button, [role="button"]')
-        ).filter(btn => {
-          const text = btn.textContent?.toLowerCase() || '';
-          return text.includes('post') || text.includes('publish');
+        ).filter((btn) => {
+          const text = btn.textContent?.toLowerCase() || "";
+          return text.includes("post") || text.includes("publish");
         });
-        
+
         if (postButtons.length === 0) {
-          return { success: true, indicator: 'post button disappeared', url: currentUrl };
+          return {
+            success: true,
+            indicator: "post button disappeared",
+            url: currentUrl,
+          };
         }
 
         return { success: false, url: currentUrl };
       });
-      
+
       if (checkResult.success) {
         postSuccess = true;
         console.log(`✅ Post verified! Indicator: "${checkResult.indicator}"`);
         break;
       }
-      
+
       // Wait before next check
       if (attempts < maxAttempts) {
         await page.waitForTimeout(5000);
@@ -2669,12 +2417,12 @@ async function createTikTokPost(page, postContent) {
 
     if (postSuccess) {
       console.log("✅ TikTok post created successfully");
-      
+
       await page.screenshot({
         path: `tiktok-post-success-${Date.now()}.png`,
         fullPage: true,
       });
-      
+
       return {
         success: true,
         message: "TikTok post created successfully",
@@ -2683,18 +2431,18 @@ async function createTikTokPost(page, postContent) {
       };
     } else {
       console.log("⚠️ Post status unclear after multiple checks");
-      
+
       await page.screenshot({
         path: `tiktok-post-uncertain-${Date.now()}.png`,
         fullPage: true,
       });
 
       // Check one more time if we're still on upload page
-      const stillOnUpload = finalUrl.includes('/upload');
-      
+      const stillOnUpload = finalUrl.includes("/upload");
+
       return {
         success: !stillOnUpload, // If we left upload page, likely successful
-        message: stillOnUpload 
+        message: stillOnUpload
           ? "TikTok post submitted but verification failed - please check manually"
           : "TikTok post likely successful (left upload page)",
         verified: false,
@@ -2702,7 +2450,6 @@ async function createTikTokPost(page, postContent) {
         note: "Automatic verification inconclusive. Please check your TikTok profile to confirm.",
       };
     }
-
   } catch (error) {
     console.error("❌ TikTok post failed:", error.message);
 
@@ -2712,7 +2459,9 @@ async function createTikTokPost(page, postContent) {
         path: `tiktok-post-error-${timestamp}.png`,
         fullPage: true,
       });
-      console.log(`📸 Error screenshot saved: tiktok-post-error-${timestamp}.png`);
+      console.log(
+        `📸 Error screenshot saved: tiktok-post-error-${timestamp}.png`
+      );
     } catch (screenshotError) {
       console.log("⚠️ Could not save error screenshot");
     }
@@ -3521,45 +3270,45 @@ async function tiktokLike(page, targetUrl) {
     // Find and analyze the like button
     const buttonInfo = await page.evaluate(() => {
       // Strategy 1: Find button with heart SVG and like count
-      const allButtons = document.querySelectorAll('button');
-      
+      const allButtons = document.querySelectorAll("button");
+
       for (const btn of allButtons) {
         // Check if button contains an SVG (heart icon)
-        const svg = btn.querySelector('svg');
+        const svg = btn.querySelector("svg");
         if (!svg) continue;
 
         // Check if this button is near or contains like count text
         const buttonText = btn.textContent || "";
         const hasLikeCount = /[\d.]+[KMB]?/.test(buttonText);
-        
+
         // Check aria-label
         const ariaLabel = btn.getAttribute("aria-label") || "";
-        
+
         // Log what we found
         console.log("Button found:", {
           ariaLabel: ariaLabel,
           text: buttonText,
           hasLikeCount: hasLikeCount,
-          html: btn.outerHTML.substring(0, 200)
+          html: btn.outerHTML.substring(0, 200),
         });
 
         // Check if it's a like button (has heart SVG + like count OR has "like" in aria-label)
         if (hasLikeCount || ariaLabel.toLowerCase().includes("like")) {
           // Check if already liked (red heart)
-          const paths = svg.querySelectorAll('path');
+          const paths = svg.querySelectorAll("path");
           let isLiked = false;
-          
+
           for (const path of paths) {
-            const fill = path.getAttribute('fill') || '';
+            const fill = path.getAttribute("fill") || "";
             const style = window.getComputedStyle(path);
-            const computedFill = style.fill || '';
-            
+            const computedFill = style.fill || "";
+
             // Check for red/pink color
             if (
-              fill.includes('254') || 
-              fill.includes('#FE2C55') || 
-              fill.includes('#fe2c55') ||
-              computedFill.includes('254, 44, 85')
+              fill.includes("254") ||
+              fill.includes("#FE2C55") ||
+              fill.includes("#fe2c55") ||
+              computedFill.includes("254, 44, 85")
             ) {
               isLiked = true;
               break;
@@ -3567,7 +3316,7 @@ async function tiktokLike(page, targetUrl) {
           }
 
           // Also check aria-label for "unlike"
-          if (ariaLabel.toLowerCase().includes('unlike')) {
+          if (ariaLabel.toLowerCase().includes("unlike")) {
             isLiked = true;
           }
 
@@ -3578,7 +3327,7 @@ async function tiktokLike(page, targetUrl) {
           }
 
           // Mark button for clicking
-          btn.setAttribute('data-like-target', 'true');
+          btn.setAttribute("data-like-target", "true");
           return { found: true, alreadyLiked: false };
         }
       }
@@ -3587,30 +3336,38 @@ async function tiktokLike(page, targetUrl) {
       // TikTok often uses a button with data-e2e attribute
       const likeButton = document.querySelector('[data-e2e*="like"]');
       if (likeButton) {
-        console.log("Found button via data-e2e:", likeButton.outerHTML.substring(0, 200));
-        likeButton.setAttribute('data-like-target', 'true');
-        
-        // Check if liked
-        const svg = likeButton.querySelector('svg path');
-        const isLiked = svg && (
-          (svg.getAttribute('fill') || '').includes('254') ||
-          (window.getComputedStyle(svg).fill || '').includes('254')
+        console.log(
+          "Found button via data-e2e:",
+          likeButton.outerHTML.substring(0, 200)
         );
-        
+        likeButton.setAttribute("data-like-target", "true");
+
+        // Check if liked
+        const svg = likeButton.querySelector("svg path");
+        const isLiked =
+          svg &&
+          ((svg.getAttribute("fill") || "").includes("254") ||
+            (window.getComputedStyle(svg).fill || "").includes("254"));
+
         return { found: true, alreadyLiked: isLiked };
       }
 
       // Strategy 3: Find by aria-label containing "like"
-      const buttonByAria = Array.from(allButtons).find(btn => {
-        const label = btn.getAttribute('aria-label') || '';
-        return label.toLowerCase().includes('like');
+      const buttonByAria = Array.from(allButtons).find((btn) => {
+        const label = btn.getAttribute("aria-label") || "";
+        return label.toLowerCase().includes("like");
       });
 
       if (buttonByAria) {
-        console.log("Found button via aria-label:", buttonByAria.getAttribute('aria-label'));
-        buttonByAria.setAttribute('data-like-target', 'true');
-        
-        const isLiked = (buttonByAria.getAttribute('aria-label') || '').toLowerCase().includes('unlike');
+        console.log(
+          "Found button via aria-label:",
+          buttonByAria.getAttribute("aria-label")
+        );
+        buttonByAria.setAttribute("data-like-target", "true");
+
+        const isLiked = (buttonByAria.getAttribute("aria-label") || "")
+          .toLowerCase()
+          .includes("unlike");
         return { found: true, alreadyLiked: isLiked };
       }
 
@@ -3643,18 +3400,20 @@ async function tiktokLike(page, targetUrl) {
       // Log all buttons for debugging
       await page.evaluate(() => {
         console.log("=== ALL BUTTONS ON PAGE ===");
-        const allBtns = document.querySelectorAll('button');
+        const allBtns = document.querySelectorAll("button");
         allBtns.forEach((btn, i) => {
           console.log(`Button ${i}:`, {
-            ariaLabel: btn.getAttribute('aria-label'),
-            dataE2e: btn.getAttribute('data-e2e'),
+            ariaLabel: btn.getAttribute("aria-label"),
+            dataE2e: btn.getAttribute("data-e2e"),
             text: btn.textContent.substring(0, 50),
-            hasSVG: !!btn.querySelector('svg')
+            hasSVG: !!btn.querySelector("svg"),
           });
         });
       });
 
-      throw new Error("TikTok Like button not found - check screenshot and console logs");
+      throw new Error(
+        "TikTok Like button not found - check screenshot and console logs"
+      );
     }
 
     console.log("✅ Like button found! Attempting to click...");
@@ -3717,35 +3476,35 @@ async function tiktokLike(page, targetUrl) {
 
     // Verify like was successful
     const verified = await page.evaluate(() => {
-      const allButtons = document.querySelectorAll('button');
-      
+      const allButtons = document.querySelectorAll("button");
+
       for (const btn of allButtons) {
-        const ariaLabel = btn.getAttribute('aria-label') || '';
-        
+        const ariaLabel = btn.getAttribute("aria-label") || "";
+
         // Check for "unlike" in aria-label
-        if (ariaLabel.toLowerCase().includes('unlike')) {
+        if (ariaLabel.toLowerCase().includes("unlike")) {
           return true;
         }
 
         // Check for red heart
-        const svg = btn.querySelector('svg');
+        const svg = btn.querySelector("svg");
         if (svg) {
-          const paths = svg.querySelectorAll('path');
+          const paths = svg.querySelectorAll("path");
           for (const path of paths) {
-            const fill = path.getAttribute('fill') || '';
-            const computedFill = window.getComputedStyle(path).fill || '';
-            
+            const fill = path.getAttribute("fill") || "";
+            const computedFill = window.getComputedStyle(path).fill || "";
+
             if (
-              fill.includes('254') || 
-              fill.includes('#FE2C55') ||
-              computedFill.includes('254, 44, 85')
+              fill.includes("254") ||
+              fill.includes("#FE2C55") ||
+              computedFill.includes("254, 44, 85")
             ) {
               return true;
             }
           }
         }
       }
-      
+
       return false;
     });
 
@@ -3759,7 +3518,7 @@ async function tiktokLike(page, targetUrl) {
       };
     } else {
       console.warn("⚠️ Like clicked but verification failed");
-      
+
       // Screenshot for debugging
       await page.screenshot({
         path: `tiktok-like-unconfirmed-${Date.now()}.png`,
@@ -3772,7 +3531,6 @@ async function tiktokLike(page, targetUrl) {
         video_url: targetUrl,
       };
     }
-
   } catch (error) {
     console.error("❌ TikTok like error:", error.message);
 
@@ -3837,7 +3595,6 @@ async function likePost(page, platform, targetUrl) {
     };
   }
 }
-
 
 // ==========================================
 // COMMENT FUNCTION
@@ -4770,46 +4527,48 @@ async function tiktokComment(page, targetUrl, commentText) {
 
     // STEP 1: Find and click the comment icon to open comment box
     console.log("🔍 Looking for comment icon...");
-    
+
     const commentIconFound = await page.evaluate(() => {
-      const allButtons = document.querySelectorAll('button, span[role="button"]');
-      
+      const allButtons = document.querySelectorAll(
+        'button, span[role="button"]'
+      );
+
       for (const btn of allButtons) {
-        const ariaLabel = btn.getAttribute('aria-label') || '';
-        const dataE2e = btn.getAttribute('data-e2e') || '';
-        
+        const ariaLabel = btn.getAttribute("aria-label") || "";
+        const dataE2e = btn.getAttribute("data-e2e") || "";
+
         // Look for comment icon by aria-label or data-e2e
         if (
-          ariaLabel.toLowerCase().includes('comment') ||
-          dataE2e.includes('comment') ||
-          dataE2e.includes('browse-comment')
+          ariaLabel.toLowerCase().includes("comment") ||
+          dataE2e.includes("comment") ||
+          dataE2e.includes("browse-comment")
         ) {
           console.log("Found comment icon:", { ariaLabel, dataE2e });
-          btn.setAttribute('data-comment-icon', 'true');
-          btn.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          btn.setAttribute("data-comment-icon", "true");
+          btn.scrollIntoView({ behavior: "smooth", block: "center" });
           return true;
         }
-        
+
         // Also check if button contains comment count and SVG (comment icon)
-        const svg = btn.querySelector('svg');
-        const text = btn.textContent || '';
-        
+        const svg = btn.querySelector("svg");
+        const text = btn.textContent || "";
+
         // Comment counts typically show like "58.7K"
         if (svg && /[\d.]+[KMB]/.test(text)) {
           // Check if this might be comment icon (not like icon)
           // Comment icon is typically a speech bubble
-          const pathD = svg.querySelector('path')?.getAttribute('d') || '';
-          
+          const pathD = svg.querySelector("path")?.getAttribute("d") || "";
+
           // Speech bubble path typically contains curves (C or c commands)
-          if (pathD.includes('C') || pathD.includes('c')) {
+          if (pathD.includes("C") || pathD.includes("c")) {
             console.log("Found comment icon via SVG pattern");
-            btn.setAttribute('data-comment-icon', 'true');
-            btn.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            btn.setAttribute("data-comment-icon", "true");
+            btn.scrollIntoView({ behavior: "smooth", block: "center" });
             return true;
           }
         }
       }
-      
+
       return false;
     });
 
@@ -4866,40 +4625,50 @@ async function tiktokComment(page, targetUrl, commentText) {
 
     // STEP 2: Find the comment input box
     console.log("🔍 Looking for comment input box...");
-    
+
     const commentBoxFound = await page.evaluate(() => {
       // Look for contenteditable divs
-      const editableDivs = document.querySelectorAll('div[contenteditable="true"], div[contenteditable="plaintext-only"]');
-      
+      const editableDivs = document.querySelectorAll(
+        'div[contenteditable="true"], div[contenteditable="plaintext-only"]'
+      );
+
       console.log(`Found ${editableDivs.length} editable divs`);
-      
+
       for (const div of editableDivs) {
-        const placeholder = div.getAttribute('data-placeholder') || div.getAttribute('placeholder') || '';
+        const placeholder =
+          div.getAttribute("data-placeholder") ||
+          div.getAttribute("placeholder") ||
+          "";
         const rect = div.getBoundingClientRect();
         const isVisible = rect.width > 0 && rect.height > 0;
-        
-        console.log("Checking div:", { placeholder, isVisible, width: rect.width, height: rect.height });
-        
+
+        console.log("Checking div:", {
+          placeholder,
+          isVisible,
+          width: rect.width,
+          height: rect.height,
+        });
+
         // Check if it's a comment box
         if (isVisible) {
           console.log("Found visible contenteditable div");
-          div.setAttribute('data-comment-box', 'true');
-          div.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          div.setAttribute("data-comment-box", "true");
+          div.scrollIntoView({ behavior: "smooth", block: "center" });
           return true;
         }
       }
-      
+
       // Fallback: look for textarea
-      const textareas = document.querySelectorAll('textarea');
+      const textareas = document.querySelectorAll("textarea");
       for (const textarea of textareas) {
         const rect = textarea.getBoundingClientRect();
         if (rect.width > 0 && rect.height > 0) {
-          textarea.setAttribute('data-comment-box', 'true');
-          textarea.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          textarea.setAttribute("data-comment-box", "true");
+          textarea.scrollIntoView({ behavior: "smooth", block: "center" });
           return true;
         }
       }
-      
+
       return false;
     });
 
@@ -4918,7 +4687,7 @@ async function tiktokComment(page, targetUrl, commentText) {
 
     // STEP 3: Focus and type in comment box
     console.log("📝 Focusing on comment box...");
-    
+
     await page.evaluate(() => {
       const box = document.querySelector('[data-comment-box="true"]');
       if (box) {
@@ -4931,45 +4700,51 @@ async function tiktokComment(page, targetUrl, commentText) {
 
     // Type the comment using keyboard simulation (more reliable)
     console.log(`⌨️ Typing comment: "${commentText}"`);
-    
+
     const commentBox = page.locator('[data-comment-box="true"]').first();
     await commentBox.click();
     await page.waitForTimeout(500);
-    
+
     // Type the comment character by character for more natural input
     await commentBox.type(commentText, { delay: 50 });
-    
+
     console.log("✅ Comment typed");
     await page.waitForTimeout(2000);
 
     // STEP 4: Find and click Post button
     console.log("🔍 Looking for Post button...");
-    
+
     const postBtnFound = await page.evaluate(() => {
       const buttons = document.querySelectorAll('button, div[role="button"]');
-      
+
       for (const btn of buttons) {
-        const text = btn.textContent?.trim() || '';
-        const dataE2e = btn.getAttribute('data-e2e') || '';
-        const ariaLabel = btn.getAttribute('aria-label') || '';
+        const text = btn.textContent?.trim() || "";
+        const dataE2e = btn.getAttribute("data-e2e") || "";
+        const ariaLabel = btn.getAttribute("aria-label") || "";
         const rect = btn.getBoundingClientRect();
         const isVisible = rect.width > 0 && rect.height > 0;
-        
-        console.log("Checking button:", { text, dataE2e, ariaLabel, isVisible });
-        
+
+        console.log("Checking button:", {
+          text,
+          dataE2e,
+          ariaLabel,
+          isVisible,
+        });
+
         // Look for Post button
-        if (isVisible && (
-          text.toLowerCase() === 'post' ||
-          text.toLowerCase() === 'comment' ||
-          dataE2e === 'comment-post' ||
-          ariaLabel.toLowerCase().includes('post')
-        )) {
+        if (
+          isVisible &&
+          (text.toLowerCase() === "post" ||
+            text.toLowerCase() === "comment" ||
+            dataE2e === "comment-post" ||
+            ariaLabel.toLowerCase().includes("post"))
+        ) {
           console.log("Found Post button!");
-          btn.setAttribute('data-post-btn', 'true');
+          btn.setAttribute("data-post-btn", "true");
           return true;
         }
       }
-      
+
       return false;
     });
 
@@ -5027,7 +4802,7 @@ async function tiktokComment(page, targetUrl, commentText) {
     }, commentText);
 
     console.log("✅ TikTok comment posted successfully!");
-    
+
     return {
       success: true,
       message: "TikTok comment posted successfully",
@@ -5035,7 +4810,6 @@ async function tiktokComment(page, targetUrl, commentText) {
       video_url: targetUrl,
       comment: commentText,
     };
-
   } catch (error) {
     console.error("❌ TikTok comment failed:", error.message);
 
@@ -5045,7 +4819,9 @@ async function tiktokComment(page, targetUrl, commentText) {
         path: `tiktok-comment-error-${timestamp}.png`,
         fullPage: true,
       });
-      console.log(`📸 Error screenshot saved: tiktok-comment-error-${timestamp}.png`);
+      console.log(
+        `📸 Error screenshot saved: tiktok-comment-error-${timestamp}.png`
+      );
     } catch (e) {
       console.log("⚠️ Could not save screenshot");
     }
@@ -5073,14 +4849,14 @@ async function commentOnPost(page, platform, targetUrl, commentText) {
     if (platform === "facebook") {
       return await facebookComment(page, targetUrl, commentText);
     }
-    
+
     return {
       success: false,
       message: `Commenting not supported on ${platform}`,
     };
   } catch (error) {
     console.error("❌ Comment failed:", error.message);
-    
+
     try {
       await page.screenshot({
         path: `${platform}-comment-error-${Date.now()}.png`,
@@ -5089,10 +4865,10 @@ async function commentOnPost(page, platform, targetUrl, commentText) {
     } catch (e) {
       // Ignore screenshot errors
     }
-    
-    return { 
-      success: false, 
-      message: error.message 
+
+    return {
+      success: false,
+      message: error.message,
     };
   }
 }
@@ -5740,11 +5516,13 @@ async function tiktokFollow(page, targetUrl) {
       try {
         const btn = page.locator(selector).first();
         const isVisible = await btn.isVisible({ timeout: 3000 });
-        
+
         if (isVisible) {
           const buttonText = await btn.textContent();
-          console.log(`Found button with selector: ${selector}, Text: "${buttonText}"`);
-          
+          console.log(
+            `Found button with selector: ${selector}, Text: "${buttonText}"`
+          );
+
           // Make sure it's "Follow" and NOT "Following"
           if (buttonText && buttonText.trim() === "Follow") {
             followButton = btn;
@@ -5769,27 +5547,27 @@ async function tiktokFollow(page, targetUrl) {
     // If not found by selectors, try finding by text content
     if (!buttonFound) {
       console.log("🔍 Trying to find button by searching all buttons...");
-      
+
       const buttonResult = await page.evaluate(() => {
-        const allButtons = Array.from(document.querySelectorAll('button'));
-        
+        const allButtons = Array.from(document.querySelectorAll("button"));
+
         for (const btn of allButtons) {
           const text = btn.textContent?.trim() || "";
-          
+
           console.log(`Checking button: "${text}"`);
-          
+
           // Check for exact "Following" first
           if (text === "Following") {
             return { found: true, isFollowing: true, buttonText: text };
           }
-          
+
           // Check for exact "Follow"
           if (text === "Follow") {
             btn.setAttribute("data-tiktok-follow-btn", "true");
             return { found: true, isFollowing: false, buttonText: text };
           }
         }
-        
+
         return { found: false, isFollowing: false, buttonText: null };
       });
 
@@ -5807,13 +5585,15 @@ async function tiktokFollow(page, targetUrl) {
       if (buttonResult.found && !buttonResult.isFollowing) {
         followButton = page.locator('[data-tiktok-follow-btn="true"]').first();
         buttonFound = true;
-        console.log(`✅ Follow button found with text: "${buttonResult.buttonText}"`);
+        console.log(
+          `✅ Follow button found with text: "${buttonResult.buttonText}"`
+        );
       }
     }
 
     if (!buttonFound) {
       console.log("❌ Follow button not found on page");
-      
+
       const screenshotPath = `tiktok-no-follow-btn-${Date.now()}.png`;
       await page.screenshot({
         path: screenshotPath,
@@ -5863,7 +5643,7 @@ async function tiktokFollow(page, targetUrl) {
             return true;
           }
           // Fallback: find any button with "Follow" text
-          const allButtons = Array.from(document.querySelectorAll('button'));
+          const allButtons = Array.from(document.querySelectorAll("button"));
           for (const button of allButtons) {
             if (button.textContent?.trim() === "Follow") {
               button.click();
@@ -5891,18 +5671,18 @@ async function tiktokFollow(page, targetUrl) {
     console.log("🔍 Verifying follow status...");
 
     const followConfirmed = await page.evaluate(() => {
-      const allButtons = Array.from(document.querySelectorAll('button'));
-      
+      const allButtons = Array.from(document.querySelectorAll("button"));
+
       for (const btn of allButtons) {
         const text = btn.textContent?.trim() || "";
-        
+
         // Check if button now shows "Following"
         if (text === "Following") {
           console.log("✅ Follow confirmed - button shows: Following");
           return true;
         }
       }
-      
+
       return false;
     });
 
@@ -5916,7 +5696,7 @@ async function tiktokFollow(page, targetUrl) {
       };
     } else {
       console.log("⚠️ Follow button clicked but confirmation not detected yet");
-      
+
       // Take screenshot for debugging
       const screenshotPath = `tiktok-follow-pending-${Date.now()}.png`;
       await page.screenshot({
@@ -5933,7 +5713,6 @@ async function tiktokFollow(page, targetUrl) {
         note: "Button was clicked. Follow may take a moment to register.",
       };
     }
-
   } catch (error) {
     console.error("❌ TikTok follow failed:", error.message);
 
@@ -5943,7 +5722,9 @@ async function tiktokFollow(page, targetUrl) {
         path: `tiktok-follow-error-${timestamp}.png`,
         fullPage: true,
       });
-      console.log(`📸 Error screenshot saved: tiktok-follow-error-${timestamp}.png`);
+      console.log(
+        `📸 Error screenshot saved: tiktok-follow-error-${timestamp}.png`
+      );
     } catch (screenshotError) {
       console.log("⚠️ Could not save error screenshot");
     }
@@ -6448,43 +6229,50 @@ async function tiktokUnfollow(page, targetUrl) {
 
     // Find and check the follow status with improved detection
     const followStatus = await page.evaluate(() => {
-      const allButtons = Array.from(document.querySelectorAll('button, div[role="button"], [role="button"]'));
-      
+      const allButtons = Array.from(
+        document.querySelectorAll('button, div[role="button"], [role="button"]')
+      );
+
       console.log(`Total buttons found: ${allButtons.length}`);
-      
+
       let followingButton = null;
       let followButton = null;
-      
+
       // Search through all buttons for Following or Follow
       for (const btn of allButtons) {
         const text = btn.textContent?.trim() || "";
         const rect = btn.getBoundingClientRect();
-        
+
         // Check if button is visible and in the upper part of the page (profile area)
         const isVisible = rect.width > 0 && rect.height > 0;
         const isInProfileArea = rect.top < 400 && rect.top > 50;
-        
-        console.log(`Button: "${text}" | Visible: ${isVisible} | Top: ${rect.top} | Left: ${rect.left}`);
-        
+
+        console.log(
+          `Button: "${text}" | Visible: ${isVisible} | Top: ${rect.top} | Left: ${rect.left}`
+        );
+
         // Look for "Following" button (exact match, case-sensitive)
         if (isVisible && isInProfileArea && text === "Following") {
           console.log("✅ Found Following button");
           followingButton = btn;
-          followingButton.setAttribute('data-following-btn', 'true');
-          followingButton.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          followingButton.setAttribute("data-following-btn", "true");
+          followingButton.scrollIntoView({
+            behavior: "smooth",
+            block: "center",
+          });
           break;
         }
       }
-      
+
       // If no Following button, check for Follow button
       if (!followingButton) {
         for (const btn of allButtons) {
           const text = btn.textContent?.trim() || "";
           const rect = btn.getBoundingClientRect();
-          
+
           const isVisible = rect.width > 0 && rect.height > 0;
           const isInProfileArea = rect.top < 400 && rect.top > 50;
-          
+
           // Look for "Follow" button (not following yet)
           if (isVisible && isInProfileArea && text === "Follow") {
             console.log("ℹ️ Found Follow button");
@@ -6493,16 +6281,16 @@ async function tiktokUnfollow(page, targetUrl) {
           }
         }
       }
-      
+
       if (followingButton) {
         return { found: true, isFollowing: true };
       }
-      
+
       if (followButton) {
         console.log("ℹ️ User is not following this account");
         return { found: true, isFollowing: false };
       }
-      
+
       return { found: false, isFollowing: false };
     });
 
@@ -6516,14 +6304,20 @@ async function tiktokUnfollow(page, targetUrl) {
         fullPage: true,
       });
       console.log(`📸 Screenshot saved: ${screenshotPath}`);
-      
+
       // Log all button texts for debugging
       const buttonTexts = await page.evaluate(() => {
-        const btns = Array.from(document.querySelectorAll('button, div[role="button"], [role="button"]'));
-        return btns.map(b => b.textContent?.trim()).filter(t => t && t.length < 50);
+        const btns = Array.from(
+          document.querySelectorAll(
+            'button, div[role="button"], [role="button"]'
+          )
+        );
+        return btns
+          .map((b) => b.textContent?.trim())
+          .filter((t) => t && t.length < 50);
       });
       console.log("🔍 All button texts found:", buttonTexts);
-      
+
       throw new Error("Following/Follow button not found on profile");
     }
 
@@ -6574,7 +6368,9 @@ async function tiktokUnfollow(page, targetUrl) {
     // Method 3: Force click
     if (!clickSuccess) {
       try {
-        const followingBtn = page.locator('[data-following-btn="true"]').first();
+        const followingBtn = page
+          .locator('[data-following-btn="true"]')
+          .first();
         await followingBtn.click({ force: true, timeout: 5000 });
         clickSuccess = true;
         console.log("✅ Clicked Following button (force)");
@@ -6602,30 +6398,34 @@ async function tiktokUnfollow(page, targetUrl) {
 
     const unfollowFound = await page.evaluate(() => {
       // Look for all possible elements that could contain "Unfollow"
-      const allElements = Array.from(document.querySelectorAll(
-        'div[role="menuitem"], div[role="button"], button, span, div, p'
-      ));
-      
-      console.log(`Checking ${allElements.length} elements for Unfollow option`);
-      
+      const allElements = Array.from(
+        document.querySelectorAll(
+          'div[role="menuitem"], div[role="button"], button, span, div, p'
+        )
+      );
+
+      console.log(
+        `Checking ${allElements.length} elements for Unfollow option`
+      );
+
       for (const el of allElements) {
         const text = el.textContent?.trim() || "";
         const rect = el.getBoundingClientRect();
         const isVisible = rect.width > 0 && rect.height > 0;
-        
+
         // Look for exact "Unfollow" text
         if (isVisible && text === "Unfollow") {
           console.log("✅ Found Unfollow option:", {
             tag: el.tagName,
             text: text,
             top: rect.top,
-            left: rect.left
+            left: rect.left,
           });
-          el.setAttribute('data-unfollow-option', 'true');
+          el.setAttribute("data-unfollow-option", "true");
           return true;
         }
       }
-      
+
       console.log("⚠️ Unfollow option not found in initial search");
       return false;
     });
@@ -6637,21 +6437,23 @@ async function tiktokUnfollow(page, targetUrl) {
         fullPage: true,
       });
       console.log(`📸 Screenshot saved: ${screenshotPath}`);
-      
+
       // Log what we found instead
       const menuContent = await page.evaluate(() => {
-        const elements = Array.from(document.querySelectorAll('div, span, button'));
+        const elements = Array.from(
+          document.querySelectorAll("div, span, button")
+        );
         return elements
-          .filter(el => {
+          .filter((el) => {
             const rect = el.getBoundingClientRect();
             return rect.width > 0 && rect.height > 0;
           })
-          .map(el => el.textContent?.trim())
-          .filter(t => t && t.length < 30 && t.length > 0)
+          .map((el) => el.textContent?.trim())
+          .filter((t) => t && t.length < 30 && t.length > 0)
           .slice(0, 20);
       });
       console.log("🔍 Visible text content:", menuContent);
-      
+
       throw new Error("Unfollow option not found in menu");
     }
 
@@ -6663,7 +6465,9 @@ async function tiktokUnfollow(page, targetUrl) {
 
     // Method 1: Try locator click
     try {
-      const unfollowOption = page.locator('[data-unfollow-option="true"]').first();
+      const unfollowOption = page
+        .locator('[data-unfollow-option="true"]')
+        .first();
       await unfollowOption.click({ timeout: 5000 });
       unfollowClickSuccess = true;
       console.log("✅ Clicked Unfollow option (locator)");
@@ -6675,7 +6479,9 @@ async function tiktokUnfollow(page, targetUrl) {
     if (!unfollowClickSuccess) {
       try {
         await page.evaluate(() => {
-          const option = document.querySelector('[data-unfollow-option="true"]');
+          const option = document.querySelector(
+            '[data-unfollow-option="true"]'
+          );
           if (option) {
             option.click();
             return true;
@@ -6692,7 +6498,9 @@ async function tiktokUnfollow(page, targetUrl) {
     // Method 3: Force click
     if (!unfollowClickSuccess) {
       try {
-        const unfollowOption = page.locator('[data-unfollow-option="true"]').first();
+        const unfollowOption = page
+          .locator('[data-unfollow-option="true"]')
+          .first();
         await unfollowOption.click({ force: true, timeout: 5000 });
         unfollowClickSuccess = true;
         console.log("✅ Clicked Unfollow option (force)");
@@ -6711,24 +6519,26 @@ async function tiktokUnfollow(page, targetUrl) {
 
     // Verify by checking if button changed to "Follow"
     console.log("🔍 Verifying unfollow...");
-    
+
     const verified = await page.evaluate(() => {
-      const allButtons = Array.from(document.querySelectorAll('button, div[role="button"], [role="button"]'));
-      
+      const allButtons = Array.from(
+        document.querySelectorAll('button, div[role="button"], [role="button"]')
+      );
+
       for (const btn of allButtons) {
         const text = btn.textContent?.trim() || "";
         const rect = btn.getBoundingClientRect();
-        
+
         const isVisible = rect.width > 0 && rect.height > 0;
         const isInProfileArea = rect.top < 400 && rect.top > 50;
-        
+
         // Check if button now shows "Follow" (not "Following")
         if (isVisible && isInProfileArea && text === "Follow") {
           console.log("✅ Verified: Button now shows 'Follow'");
           return true;
         }
       }
-      
+
       console.log("⚠️ Verification: 'Follow' button not found yet");
       return false;
     });
@@ -6758,7 +6568,6 @@ async function tiktokUnfollow(page, targetUrl) {
         note: "Action was performed but button state not yet updated. Please check profile to confirm.",
       };
     }
-
   } catch (error) {
     console.error("❌ TikTok unfollow failed:", error.message);
 
@@ -6768,7 +6577,9 @@ async function tiktokUnfollow(page, targetUrl) {
         path: `tiktok-unfollow-error-${timestamp}.png`,
         fullPage: true,
       });
-      console.log(`📸 Error screenshot saved: tiktok-unfollow-error-${timestamp}.png`);
+      console.log(
+        `📸 Error screenshot saved: tiktok-unfollow-error-${timestamp}.png`
+      );
     } catch (screenshotError) {
       console.log("⚠️ Could not save screenshot");
     }
@@ -6796,7 +6607,7 @@ async function unfollowUser(page, platform, targetUrl) {
     if (platform === "twitter" || platform === "x") {
       return await twitterUnfollow(page, targetUrl);
     }
-    
+
     if (platform === "tiktok") {
       return await tiktokUnfollow(page, targetUrl);
     }
@@ -6818,72 +6629,231 @@ async function unfollowUser(page, platform, targetUrl) {
     return { success: false, message: error.message };
   }
 }
+//Scrolling
 
-// async function unfollowUser(page, platform, targetUrl) {
-//   console.log(`🚫 Unfollowing user on ${platform}...`);
+app.post("/stop-scroll", async (req, res) => {
+  const { account_id } = req.body;
 
-//   try {
-//     await page.goto(targetUrl, {
-//       waitUntil: "domcontentloaded",
-//       timeout: 60000,
-//     });
+  if (!account_id) {
+    return res.json({ success: false, message: "account_id required" });
+  }
 
-//     await page.waitForTimeout(4000);
+  if (activeScrollBots[account_id]) {
+    activeScrollBots[account_id].shouldStop = true;
+    console.log(`🛑 Stop signal sent to scroll bot for account ${account_id}`);
+    
+    return res.json({
+      success: true,
+      message: "Stop signal sent. Bot will stop after current action.",
+    });
+  }
 
-//     if (platform !== "instagram") {
-//       return {
-//         success: false,
-//         message: `Unfollow not supported for ${platform}`,
-//       };
-//     }
+  return res.json({
+    success: false,
+    message: "No active scroll bot found for this account",
+  });
+});
 
-//     // STEP 1: Find "Following" button
-//     const followingBtn = page.locator('button:has-text("Following")').first();
+// --------------- GET SCROLL BOT STATUS -------------------
+app.post("/scroll-status", async (req, res) => {
+  const { account_id } = req.body;
 
-//     const isFollowing = await followingBtn.count();
-//     if (!isFollowing) {
-//       console.log("ℹ️ User is NOT followed — skipping unfollow");
-//       return {
-//         success: true,
-//         message: "User was not followed, nothing to unfollow",
-//       };
-//     }
+  if (!account_id) {
+    return res.json({ success: false, message: "account_id required" });
+  }
 
-//     // ✅ CLICK FOLLOWING (THIS WAS MISSING)
-//     await followingBtn.waitFor({ state: "visible", timeout: 15000 });
-//     await followingBtn.click();
-//     await page.waitForTimeout(2000);
+  const botStatus = activeScrollBots[account_id];
 
-//     // STEP 2: Wait for dialog
-//     const dialog = page.locator('div[role="dialog"]').first();
-//     await dialog.waitFor({ state: "visible", timeout: 15000 });
+  if (botStatus) {
+    return res.json({
+      success: true,
+      isRunning: !botStatus.shouldStop,
+      stats: botStatus.stats,
+    });
+  }
 
-//     // STEP 3: Click Unfollow
-//     const unfollowBtn = dialog
-//       .locator('div[role="button"]:has-text("Unfollow")')
-//       .first();
+  return res.json({
+    success: true,
+    isRunning: false,
+    stats: null,
+  });
+});
 
-//     await unfollowBtn.waitFor({ state: "visible", timeout: 15000 });
-//     await unfollowBtn.click();
+// --------------- INSTAGRAM UNLIMITED SCROLL BOT -------------------
+async function instagramScrollBot(page, accountId, options = {}) {
+  console.log("📸 Instagram UNLIMITED scroll bot started...");
 
-//     await page.waitForTimeout(3000);
+  const {
+    likeChance = 35,
+    commentChance = 10,
+    comments = [
+      "Nice post 🔥",
+      "Love this ❤️",
+      "Amazing 😍",
+      "So cool 👏",
+      "Great content 💯",
+      "Awesome! 🙌",
+      "Beautiful ✨",
+      "Incredible! 👌",
+    ],
+  } = options;
 
-//     console.log("✅ Unfollowed successfully");
-//     return {
-//       success: true,
-//       message: "User unfollowed successfully",
-//     };
-//   } catch (error) {
-//     console.error("❌ Unfollow failed:", error.message);
-//     return {
-//       success: false,
-//       message: error.message,
-//     };
-//   }
-// }
+  // Initialize bot state
+  activeScrollBots[accountId] = {
+    shouldStop: false,
+    stats: {
+      scrolls: 0,
+      likes: 0,
+      comments: 0,
+      startTime: Date.now(),
+    },
+  };
 
-// Helper function to extract auth token
+  try {
+    // 🔥 Navigate to Instagram home/feed automatically
+    console.log("🏠 Navigating to Instagram feed...");
+    await page.goto("https://www.instagram.com/", {
+      waitUntil: "networkidle",
+      timeout: 30000,
+    });
 
+    await page.waitForTimeout(5000);
+
+    // Verify we're on the feed
+    const currentUrl = page.url();
+    if (currentUrl.includes("/login") || currentUrl.includes("/accounts/login")) {
+      console.log("❌ Not logged in - session expired");
+      delete activeScrollBots[accountId];
+      return {
+        success: false,
+        message: "Session expired. Please log in again.",
+      };
+    }
+
+    console.log("✅ Feed loaded - Starting unlimited scroll...");
+
+    let scrollIteration = 0;
+
+    // 🔄 INFINITE LOOP - runs until user stops it
+    while (!activeScrollBots[accountId]?.shouldStop) {
+      scrollIteration++;
+      console.log(`⬇️ Scrolling feed (iteration: ${scrollIteration})`);
+
+      // Smooth random scroll
+      await page.mouse.wheel(0, Math.floor(Math.random() * 600) + 400);
+      await page.waitForTimeout(Math.floor(Math.random() * 2500) + 1500);
+
+      // Update stats
+      activeScrollBots[accountId].stats.scrolls = scrollIteration;
+
+      // Collect visible posts
+      const posts = await page.locator("article").all();
+
+      if (posts.length === 0) {
+        console.log("⚠️ No posts found, continuing...");
+        continue;
+      }
+
+      // Pick random post from visible ones
+      const post = posts[Math.floor(Math.random() * posts.length)];
+
+      try {
+        await post.scrollIntoViewIfNeeded();
+        await page.waitForTimeout(1000);
+
+        // Check stop signal before interactions
+        if (activeScrollBots[accountId]?.shouldStop) break;
+
+        // ❤️ RANDOM LIKE
+        if (Math.random() * 100 < likeChance) {
+          const likeBtn = post.locator('svg[aria-label="Like"]').first();
+
+          if (await likeBtn.isVisible().catch(() => false)) {
+            await likeBtn.click({ delay: 120 });
+            activeScrollBots[accountId].stats.likes++;
+            console.log(
+              `❤️ Post liked (Total: ${activeScrollBots[accountId].stats.likes})`
+            );
+            await page.waitForTimeout(Math.floor(Math.random() * 2000) + 1500);
+          }
+        }
+
+        // Check stop signal before commenting
+        if (activeScrollBots[accountId]?.shouldStop) break;
+
+        // 💬 RANDOM COMMENT
+        if (Math.random() * 100 < commentChance) {
+          const commentBtn = post.locator('svg[aria-label="Comment"]').first();
+
+          if (await commentBtn.isVisible().catch(() => false)) {
+            await commentBtn.click();
+            await page.waitForTimeout(2000);
+
+            const textarea = page.locator("textarea").first();
+            if (await textarea.isVisible().catch(() => false)) {
+              const comment =
+                comments[Math.floor(Math.random() * comments.length)];
+
+              await textarea.type(comment, { delay: 80 });
+              await page.keyboard.press("Enter");
+
+              activeScrollBots[accountId].stats.comments++;
+              console.log(
+                `💬 Commented: "${comment}" (Total: ${activeScrollBots[accountId].stats.comments})`
+              );
+              await page.waitForTimeout(Math.floor(Math.random() * 3000) + 2000);
+            }
+          }
+        }
+      } catch (err) {
+        console.log("⚠️ Post interaction skipped:", err.message);
+      }
+
+      // Random pause every 5-10 scrolls
+      if (scrollIteration % 7 === 0) {
+        const pauseDuration = Math.floor(Math.random() * 5000) + 3000;
+        console.log(`⏸️ Taking a ${pauseDuration}ms break...`);
+        await page.waitForTimeout(pauseDuration);
+      }
+
+      // Check stop signal at end of loop
+      if (activeScrollBots[accountId]?.shouldStop) {
+        console.log("🛑 Stop signal received - ending scroll bot");
+        break;
+      }
+    }
+
+    const finalStats = activeScrollBots[accountId].stats;
+    const duration = Math.floor((Date.now() - finalStats.startTime) / 1000);
+
+    console.log("✅ Instagram scroll bot stopped");
+    console.log(
+      `📊 Final Stats: ${finalStats.scrolls} scrolls, ${finalStats.likes} likes, ${finalStats.comments} comments in ${duration}s`
+    );
+
+    // Cleanup
+    delete activeScrollBots[accountId];
+
+    return {
+      success: true,
+      message: "Instagram scrolling stopped",
+      stats: {
+        ...finalStats,
+        duration: `${duration}s`,
+      },
+    };
+  } catch (error) {
+    console.error("❌ Scroll bot error:", error.message);
+    delete activeScrollBots[accountId];
+    return {
+      success: false,
+      message: error.message,
+    };
+  }
+}
+
+
+//auth token
 function extractAuthToken(cookies, platform) {
   const tokenMap = {
     instagram: "sessionid",
