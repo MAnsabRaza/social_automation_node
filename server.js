@@ -509,9 +509,9 @@ app.post("/check-login", async (req, res) => {
 });
 
 // --------------- EXECUTE TASK -------------------
+
 app.post("/execute-task", async (req, res) => {
   const { task, account } = req.body;
-
   console.log("📋 Executing Task:", task);
 
   if (!task || !account) {
@@ -595,22 +595,36 @@ app.post("/execute-task", async (req, res) => {
       );
     }
 
-    // 🔥 UNLIMITED AUTO-SCROLL
-    if (taskType === "share" || taskType === "scroll") {
-      if (platform === "instagram") {
-        // Start scroll bot in background
-        instagramScrollBot(page, account.id, {
-          likeChance: task.likeChance || 30,
-          commentChance: task.commentChance || 8,
-          comments: task.comments || undefined,
-        });
+    // 🔥 UNLIMITED AUTO-SCROLL (INSTAGRAM & FACEBOOK)
+    if (taskType === "scroll" || taskType === "share") {
+      const options = {
+        likeChance: task.likeChance || 30,
+        commentChance: task.commentChance || 8,
+        comments: task.comments || undefined,
+      };
 
+      if (platform === "instagram") {
+        instagramScrollBot(page, account.id, options);
         return res.json({
           success: true,
           message: "Instagram unlimited scrolling started",
           info: "Bot will run until you call /stop-scroll",
         });
       }
+
+      if (platform === "facebook") {
+        facebookScrollBot(page, account.id, options);
+        return res.json({
+          success: true,
+          message: "Facebook unlimited scrolling started",
+          info: "Bot will run until you call /stop-scroll",
+        });
+      }
+
+      return res.json({
+        success: false,
+        message: `Scroll bot not available for platform: ${platform}`,
+      });
     }
 
     return res.json({
@@ -625,6 +639,7 @@ app.post("/execute-task", async (req, res) => {
     });
   }
 });
+
 
 
 // Add endpoint to close browser for an account
@@ -6655,6 +6670,30 @@ app.post("/stop-scroll", async (req, res) => {
 });
 
 // --------------- GET SCROLL BOT STATUS -------------------
+app.post("/stop-scroll", async (req, res) => {
+  const { account_id } = req.body;
+
+  if (!account_id) {
+    return res.json({ success: false, message: "account_id required" });
+  }
+
+  if (activeScrollBots[account_id]) {
+    activeScrollBots[account_id].shouldStop = true;
+    console.log(`🛑 Stop signal sent to scroll bot for account ${account_id}`);
+
+    return res.json({
+      success: true,
+      message: "Stop signal sent. Bot will stop after current action.",
+    });
+  }
+
+  return res.json({
+    success: false,
+    message: "No active scroll bot found for this account",
+  });
+});
+
+// --------------- GET SCROLL BOT STATUS -------------------
 app.post("/scroll-status", async (req, res) => {
   const { account_id } = req.body;
 
@@ -6852,6 +6891,462 @@ async function instagramScrollBot(page, accountId, options = {}) {
   }
 }
 
+
+async function facebookScrollBot(page, accountId, options = {}) {
+  console.log("📘 Facebook UNLIMITED scroll bot started...");
+
+  const {
+    likeChance = 35,
+    commentChance = 10,
+    comments = [
+      "Great post! 👍",
+      "Love this! ❤️",
+      "Amazing! 😍",
+      "Awesome! 🔥",
+      "Nice! 👏",
+      "Well said! 💯",
+      "Interesting! 🤔",
+      "Thanks for sharing! 🙏",
+    ],
+  } = options;
+
+  // Initialize bot state
+  activeScrollBots[accountId] = {
+    shouldStop: false,
+    platform: "facebook",
+    stats: {
+      scrolls: 0,
+      likes: 0,
+      comments: 0,
+      attempts: 0,
+      errors: [],
+      startTime: Date.now(),
+    },
+  };
+
+  try {
+    console.log("🏠 Navigating to Facebook feed...");
+    await page.goto("https://www.facebook.com/", {
+      waitUntil: "domcontentloaded",
+      timeout: 30000,
+    });
+
+    await page.waitForTimeout(8000); // Give Facebook more time to load
+
+    // Verify login
+    const currentUrl = page.url();
+    if (currentUrl.includes("/login")) {
+      console.log("❌ Not logged in - session expired");
+      delete activeScrollBots[accountId];
+      return {
+        success: false,
+        message: "Session expired. Please log in again.",
+      };
+    }
+
+    console.log("✅ Facebook feed loaded - Starting unlimited scroll...");
+
+    let scrollIteration = 0;
+
+    // 🔄 INFINITE LOOP
+    while (!activeScrollBots[accountId]?.shouldStop) {
+      scrollIteration++;
+      console.log(`⬇️ [Facebook] Scrolling (iteration: ${scrollIteration})`);
+
+      // Scroll
+      await page.mouse.wheel(0, Math.floor(Math.random() * 800) + 500);
+      await page.waitForTimeout(Math.floor(Math.random() * 3000) + 2500);
+
+      activeScrollBots[accountId].stats.scrolls = scrollIteration;
+
+      // Get Facebook posts - try multiple selectors
+      let posts = await page.locator('div[role="article"]').all();
+      
+      // Fallback: try data-pagelet attribute
+      if (posts.length === 0) {
+        posts = await page.locator('div[data-pagelet^="FeedUnit"]').all();
+      }
+
+      if (posts.length === 0) {
+        console.log("⚠️ No posts found, continuing...");
+        continue;
+      }
+
+      console.log(`📊 Found ${posts.length} posts on screen`);
+
+      // Pick a random post from the first 5 visible posts
+      const post = posts[Math.floor(Math.random() * Math.min(posts.length, 5))];
+
+      try {
+        await post.scrollIntoViewIfNeeded();
+        await page.waitForTimeout(2000);
+
+        if (activeScrollBots[accountId]?.shouldStop) break;
+
+        activeScrollBots[accountId].stats.attempts++;
+
+        // 🐛 DEBUG: See what buttons are available in the post
+        const debugInfo = await post.evaluate((postEl) => {
+          const buttons = postEl.querySelectorAll('[role="button"]');
+          return Array.from(buttons).slice(0, 5).map(btn => ({
+            tag: btn.tagName,
+            ariaLabel: btn.getAttribute('aria-label'),
+            text: btn.textContent?.substring(0, 30).trim()
+          }));
+        });
+        console.log('📊 Available buttons in post:', JSON.stringify(debugInfo, null, 2));
+
+        // ❤️ LIKE - Enhanced detection with multiple strategies
+        if (Math.random() * 100 < likeChance) {
+          console.log("🔍 Looking for Like button (enhanced)...");
+
+          let liked = false;
+
+          try {
+            // Strategy 1: Check if already liked
+            const alreadyLiked = await post.evaluate((postEl) => {
+              const elements = postEl.querySelectorAll("[aria-label]");
+              for (const elem of elements) {
+                const ariaLabel = elem.getAttribute("aria-label");
+                if (ariaLabel) {
+                  const lowerLabel = ariaLabel.toLowerCase();
+                  if (
+                    lowerLabel.includes("remove like") ||
+                    lowerLabel.includes("unlike") ||
+                    lowerLabel === "like: liked"
+                  ) {
+                    return true;
+                  }
+                }
+              }
+              return false;
+            });
+
+            if (alreadyLiked) {
+              console.log("💙 Post already liked, skipping...");
+            } else {
+              // Strategy 2: Multiple selector approaches
+              const likeSelectors = [
+                '[aria-label="Like"]',
+                '[aria-label="like"]',
+                'div[aria-label="Like"][role="button"]',
+                'span[aria-label="Like"][role="button"]',
+                '[data-testid="reaction-button"]',
+              ];
+
+              for (const selector of likeSelectors) {
+                try {
+                  const likeButton = await post.locator(selector).first();
+                  
+                  if (await likeButton.isVisible({ timeout: 1000 }).catch(() => false)) {
+                    console.log(`✅ Found Like button with selector: ${selector}`);
+                    
+                    await likeButton.scrollIntoViewIfNeeded();
+                    await page.waitForTimeout(300 + Math.random() * 200);
+                    await likeButton.click({ delay: 150 });
+                    
+                    activeScrollBots[accountId].stats.likes++;
+                    console.log(`❤️ [Facebook] Liked! (Total: ${activeScrollBots[accountId].stats.likes})`);
+                    liked = true;
+                    await page.waitForTimeout(Math.floor(Math.random() * 2000) + 2000);
+                    break;
+                  }
+                } catch (e) {
+                  continue;
+                }
+              }
+
+              // Strategy 3: Search by text content in buttons
+              if (!liked) {
+                console.log("🔍 Trying text-based Like button search...");
+                
+                const allButtons = await post.locator('div[role="button"], span[role="button"]').all();
+                
+                for (const button of allButtons) {
+                  try {
+                    if (!(await button.isVisible({ timeout: 500 }).catch(() => false))) {
+                      continue;
+                    }
+                    
+                    const ariaLabel = await button.getAttribute('aria-label').catch(() => '');
+                    const textContent = await button.textContent().catch(() => '');
+                    
+                    if (
+                      ariaLabel.toLowerCase().includes('like') || 
+                      textContent.toLowerCase().trim() === 'like'
+                    ) {
+                      console.log(`✅ Found Like button by text/aria-label`);
+                      
+                      await button.scrollIntoViewIfNeeded();
+                      await page.waitForTimeout(300);
+                      await button.click({ delay: 150 });
+                      
+                      activeScrollBots[accountId].stats.likes++;
+                      console.log(`❤️ [Facebook] Liked! (Total: ${activeScrollBots[accountId].stats.likes})`);
+                      liked = true;
+                      await page.waitForTimeout(Math.floor(Math.random() * 2000) + 2000);
+                      break;
+                    }
+                  } catch (e) {
+                    continue;
+                  }
+                }
+              }
+
+              // Strategy 4: JavaScript evaluation fallback
+              if (!liked) {
+                console.log("🔍 Trying JavaScript evaluation for Like button...");
+                
+                const likeClicked = await post.evaluate((postEl) => {
+                  const elements = postEl.querySelectorAll("[aria-label]");
+                  
+                  for (const elem of elements) {
+                    const ariaLabel = elem.getAttribute("aria-label");
+                    if (ariaLabel && ariaLabel.toLowerCase() === "like") {
+                      const role = elem.getAttribute("role");
+                      if (role === "button" || elem.tagName.toLowerCase() === "button") {
+                        elem.click();
+                        return true;
+                      }
+                    }
+                  }
+                  
+                  // Fallback: find first clickable element with "Like" text
+                  const buttons = postEl.querySelectorAll('div[role="button"], span[role="button"]');
+                  for (const btn of buttons) {
+                    const text = btn.textContent?.trim().toLowerCase();
+                    if (text === 'like') {
+                      btn.click();
+                      return true;
+                    }
+                  }
+                  
+                  return false;
+                });
+                
+                if (likeClicked) {
+                  activeScrollBots[accountId].stats.likes++;
+                  console.log(`❤️ [Facebook] Liked via JS! (Total: ${activeScrollBots[accountId].stats.likes})`);
+                  liked = true;
+                  await page.waitForTimeout(Math.floor(Math.random() * 2000) + 2000);
+                }
+              }
+
+              if (!liked) {
+                console.log("⚠️ Could not find Like button - will try next post");
+              }
+            }
+          } catch (e) {
+            console.log("⚠️ Like attempt failed:", e.message);
+            activeScrollBots[accountId].stats.errors.push(`Like: ${e.message}`);
+          }
+        }
+
+        if (activeScrollBots[accountId]?.shouldStop) break;
+
+        // 💬 COMMENT - Enhanced detection
+        if (Math.random() * 100 < commentChance) {
+          console.log("🔍 Looking for Comment button...");
+
+          let commented = false;
+
+          try {
+            // Strategy 1: Find comment button with multiple selectors
+            const commentSelectors = [
+              '[aria-label*="Comment"]',
+              '[aria-label*="comment"]',
+            ];
+
+            let commentBoxOpened = false;
+
+            for (const selector of commentSelectors) {
+              try {
+                const buttons = await post.locator(selector).all();
+                
+                for (const button of buttons) {
+                  if (!(await button.isVisible({ timeout: 500 }).catch(() => false))) {
+                    continue;
+                  }
+                  
+                  const ariaLabel = await button.getAttribute('aria-label').catch(() => '');
+                  
+                  if (ariaLabel.toLowerCase().includes('comment')) {
+                    console.log(`✅ Found Comment button with aria-label: ${ariaLabel}`);
+                    await button.click({ delay: 150 });
+                    await page.waitForTimeout(2000);
+                    commentBoxOpened = true;
+                    break;
+                  }
+                }
+                
+                if (commentBoxOpened) break;
+              } catch (e) {
+                continue;
+              }
+            }
+
+            // Strategy 2: Try text-based search
+            if (!commentBoxOpened) {
+              console.log("🔍 Trying text-based Comment button search...");
+              
+              const allButtons = await post.locator('div[role="button"], span[role="button"]').all();
+              
+              for (const button of allButtons) {
+                try {
+                  if (!(await button.isVisible({ timeout: 500 }).catch(() => false))) {
+                    continue;
+                  }
+                  
+                  const textContent = await button.textContent().catch(() => '');
+                  
+                  if (textContent.toLowerCase().trim() === 'comment') {
+                    console.log(`✅ Found Comment button by text`);
+                    await button.click({ delay: 150 });
+                    await page.waitForTimeout(2000);
+                    commentBoxOpened = true;
+                    break;
+                  }
+                } catch (e) {
+                  continue;
+                }
+              }
+            }
+
+            // Strategy 3: Try clicking second/third button (comment is usually after Like)
+            if (!commentBoxOpened) {
+              console.log("🔍 Trying positional click for Comment button...");
+              
+              const allButtons = await post.locator('div[role="button"], span[role="button"]').all();
+              
+              // Comment button is usually index 1 or 2
+              for (let i = 1; i < Math.min(allButtons.length, 4); i++) {
+                try {
+                  const ariaLabel = await allButtons[i].getAttribute('aria-label').catch(() => '');
+                  const text = await allButtons[i].textContent().catch(() => '');
+                  console.log(`Trying button ${i}: aria="${ariaLabel}", text="${text?.substring(0, 20)}"`);
+                  
+                  await allButtons[i].click({ delay: 150 });
+                  await page.waitForTimeout(2000);
+                  commentBoxOpened = true;
+                  break;
+                } catch (e) {
+                  continue;
+                }
+              }
+            }
+
+            // Now try to find and fill comment input
+            if (commentBoxOpened) {
+              console.log("✅ Comment box opened, looking for input field...");
+              
+              const inputSelectors = [
+                'div[contenteditable="true"]',
+                'textarea',
+                'div[role="textbox"]',
+                '[aria-label*="comment" i][contenteditable="true"]',
+                '[aria-label*="Write a comment" i]',
+              ];
+
+              for (const selector of inputSelectors) {
+                try {
+                  // Use page locator and get last one (newest input)
+                  const commentInput = await page.locator(selector).last();
+                  
+                  if (await commentInput.isVisible({ timeout: 2000 }).catch(() => false)) {
+                    const comment = comments[Math.floor(Math.random() * comments.length)];
+                    
+                    console.log(`✍️ Found comment input with selector "${selector}", typing: "${comment}"`);
+                    
+                    await commentInput.click();
+                    await page.waitForTimeout(500);
+                    
+                    // Clear any existing text first
+                    await commentInput.fill('');
+                    await page.waitForTimeout(200);
+                    
+                    // Type the comment
+                    await commentInput.type(comment, { delay: 80 });
+                    await page.waitForTimeout(1500);
+                    
+                    // Press Enter to submit
+                    await page.keyboard.press("Enter");
+                    await page.waitForTimeout(500);
+
+                    activeScrollBots[accountId].stats.comments++;
+                    console.log(`💬 [Facebook] Commented: "${comment}" (Total: ${activeScrollBots[accountId].stats.comments})`);
+                    commented = true;
+                    await page.waitForTimeout(Math.floor(Math.random() * 3000) + 3000);
+                    break;
+                  }
+                } catch (e) {
+                  console.log(`⚠️ Input selector "${selector}" failed:`, e.message);
+                  continue;
+                }
+              }
+            } else {
+              console.log("⚠️ Could not open comment box");
+            }
+
+            if (!commented) {
+              console.log("⚠️ Could not post comment - will try next post");
+            }
+          } catch (e) {
+            console.log("⚠️ Comment attempt failed:", e.message);
+            activeScrollBots[accountId].stats.errors.push(`Comment: ${e.message}`);
+          }
+        }
+      } catch (err) {
+        console.log("⚠️ Post interaction error:", err.message);
+        activeScrollBots[accountId].stats.errors.push(err.message);
+      }
+
+      // Random pause every 5 scrolls
+      if (scrollIteration % 5 === 0) {
+        const pauseDuration = Math.floor(Math.random() * 5000) + 4000;
+        console.log(`⏸️ Taking a ${pauseDuration}ms break...`);
+        await page.waitForTimeout(pauseDuration);
+      }
+
+      if (activeScrollBots[accountId]?.shouldStop) {
+        console.log("🛑 Stop signal received - ending Facebook bot");
+        break;
+      }
+    }
+
+    const finalStats = activeScrollBots[accountId].stats;
+    const duration = Math.floor((Date.now() - finalStats.startTime) / 1000);
+
+    console.log("✅ Facebook scroll bot stopped");
+    console.log(
+      `📊 Stats: ${finalStats.scrolls} scrolls, ${finalStats.likes} likes, ${finalStats.comments} comments, ${finalStats.attempts} attempts in ${duration}s`
+    );
+    console.log(`❌ Errors encountered: ${finalStats.errors.length}`);
+
+    delete activeScrollBots[accountId];
+
+    return {
+      success: true,
+      message: "Facebook scrolling stopped",
+      stats: {
+        ...finalStats,
+        duration: `${duration}s`,
+      },
+    };
+  } catch (error) {
+    console.error("❌ Facebook scroll bot error:", error.message);
+    
+    if (activeScrollBots[accountId]) {
+      activeScrollBots[accountId].stats.errors.push(error.message);
+    }
+    
+    delete activeScrollBots[accountId];
+    
+    return {
+      success: false,
+      message: error.message,
+    };
+  }
+}
 
 //auth token
 function extractAuthToken(cookies, platform) {
