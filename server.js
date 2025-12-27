@@ -50,8 +50,8 @@ async function solveCaptcha(siteURL, siteKey) {
 // PLATFORM URLS
 const LOGIN_URL = {
   instagram: "https://www.instagram.com/accounts/login/",
-  facebook: "https://www.facebook.com/login/",
-  youtube: "https://accounts.google.com",
+  facebook: "https://www.facebook.com/login/", 
+  youtube: "https://accounts.google.com/v3/signin/identifier?continue=https%3A%2F%2Fwww.youtube.com%2Fsignin%3Faction_handle_signin%3Dtrue%26app%3Ddesktop%26hl%3Den%26next%3Dhttps%253A%252F%252Fwww.youtube.com%252F&dsh=S1359224021%3A1766843685369378&ec=65620&hl=en&ifkv=Ac2yZaUMabvbQcslE6h1iTgIEGmRjXVU4CAOAA3pbO8EMLrrsucsaRPXf8CT6G_l1hpDocOn9-GI2A&passive=true&service=youtube&uilel=3&flowName=GlifWebSignIn&flowEntry=ServiceLogin",
   tiktok: "https://www.tiktok.com/login/phone-or-email/email",
   twitter: "https://twitter.com/login",
   linkedin: "https://www.linkedin.com/login",
@@ -119,9 +119,7 @@ app.post("/login-social", async (req, res) => {
 
     switch (platform) {
       case "instagram":
-        await page.waitForSelector('input[name="username"]', {
-          timeout: 30000,
-        });
+        await page.waitForSelector('input[name="username"]', { timeout: 30000 });
         await page.fill('input[name="username"]', username);
         await page.fill('input[name="password"]', password);
         await page.click('button[type="submit"]');
@@ -142,165 +140,45 @@ app.post("/login-social", async (req, res) => {
         console.log("🐦 Starting Twitter login flow...");
         const twitterEmail = req.body.email || username;
         const twitterUsername = req.body.twitter_username || username;
-        console.log("📧 Using email:", twitterEmail);
-        console.log("👤 Using username:", twitterUsername);
-
+        
         await page.waitForTimeout(3000);
-
-        // STEP 1: Enter Email
-        console.log("📧 STEP 1: Entering email...");
-        const emailSelectors = [
-          'input[autocomplete="username"]',
-          'input[name="text"]',
-          'input[type="text"]',
-          'input[autocomplete="email"]',
-        ];
-
+        
+        // Email entry
+        const emailSelectors = ['input[autocomplete="username"]', 'input[name="text"]'];
         let emailEntered = false;
         for (const selector of emailSelectors) {
           try {
-            const input = await page.waitForSelector(selector, {
-              timeout: 5000,
-              state: "visible",
-            });
+            const input = await page.waitForSelector(selector, { timeout: 5000, state: "visible" });
             if (input) {
-              await input.click();
-              await page.waitForTimeout(500);
               await input.fill(twitterEmail);
-              console.log("✅ Email entered successfully");
               emailEntered = true;
               break;
             }
-          } catch (e) {
-            continue;
-          }
+          } catch (e) { continue; }
         }
-
-        if (!emailEntered) {
-          throw new Error("Could not find email input field");
-        }
-
+        
+        if (!emailEntered) throw new Error("Could not find email input");
+        
         await page.waitForTimeout(1000);
-        try {
-          const nextButton1 = page
-            .locator('div[role="button"]:has-text("Next")')
-            .first();
-          if (await nextButton1.isVisible({ timeout: 3000 })) {
-            await nextButton1.click();
-          } else {
-            await page.keyboard.press("Enter");
-          }
-        } catch (e) {
-          await page.keyboard.press("Enter");
-        }
-
+        await page.keyboard.press("Enter");
         await page.waitForTimeout(4000);
-
-        // STEP 2: Enter Username (if required)
-        console.log("👤 STEP 2: Checking for username verification...");
-        const usernameSelectors = [
-          'input[data-testid="ocfEnterTextTextInput"]',
-          'input[name="text"]',
-          'input[type="text"]',
-        ];
-
-        let usernameEntered = false;
-        for (const selector of usernameSelectors) {
-          try {
-            const usernameInput = await page.waitForSelector(selector, {
-              timeout: 5000,
-              state: "visible",
-            });
-            if (usernameInput) {
-              console.log("📱 Username verification detected");
-              await usernameInput.click();
-              await page.waitForTimeout(500);
-              const cleanUsername = twitterUsername.replace("@", "");
-              await usernameInput.fill(cleanUsername);
-              console.log("✅ Username entered:", cleanUsername);
-              usernameEntered = true;
-
-              await page.waitForTimeout(1000);
-              try {
-                const nextButton2 = page
-                  .locator('div[role="button"]:has-text("Next")')
-                  .first();
-                if (await nextButton2.isVisible({ timeout: 3000 })) {
-                  await nextButton2.click();
-                } else {
-                  await page.keyboard.press("Enter");
-                }
-              } catch (e) {
-                await page.keyboard.press("Enter");
-              }
-              await page.waitForTimeout(4000);
-              break;
-            }
-          } catch (e) {
-            continue;
+        
+        // Username if required
+        try {
+          const usernameInput = await page.waitForSelector('input[data-testid="ocfEnterTextTextInput"]', { timeout: 5000 });
+          if (usernameInput) {
+            await usernameInput.fill(twitterUsername.replace("@", ""));
+            await page.keyboard.press("Enter");
+            await page.waitForTimeout(4000);
           }
-        }
-
-        // STEP 3: Enter Password
-        console.log("🔐 STEP 3: Entering password...");
-        const passwordSelectors = [
-          'input[name="password"]',
-          'input[type="password"]',
-          'input[autocomplete="current-password"]',
-        ];
-
-        let passwordEntered = false;
-        for (const selector of passwordSelectors) {
-          try {
-            const input = await page.waitForSelector(selector, {
-              timeout: 8000,
-              state: "visible",
-            });
-            if (input) {
-              await input.click();
-              await page.waitForTimeout(500);
-              await input.fill(password);
-              console.log("✅ Password entered successfully");
-              passwordEntered = true;
-              break;
-            }
-          } catch (e) {
-            continue;
-          }
-        }
-
-        if (!passwordEntered) {
-          throw new Error("Could not find password input field");
-        }
-
+        } catch (e) { }
+        
+        // Password
+        const passwordInput = await page.waitForSelector('input[name="password"]', { timeout: 8000 });
+        await passwordInput.fill(password);
         await page.waitForTimeout(1500);
-        const loginButtonSelectors = [
-          'div[data-testid="LoginForm_Login_Button"]',
-          'div[role="button"]:has-text("Log in")',
-          'button:has-text("Log in")',
-        ];
-
-        let loginClicked = false;
-        for (const selector of loginButtonSelectors) {
-          try {
-            const btn = page.locator(selector).first();
-            if (await btn.isVisible({ timeout: 3000 })) {
-              await btn.click();
-              console.log("✅ Clicked Log in button");
-              loginClicked = true;
-              break;
-            }
-          } catch (e) {
-            continue;
-          }
-        }
-
-        if (!loginClicked) {
-          await page.keyboard.press("Enter");
-        }
-
+        await page.keyboard.press("Enter");
         await page.waitForTimeout(8000);
-        console.log("✅ Twitter login successful!");
         break;
 
       case "tiktok":
@@ -311,74 +189,42 @@ app.post("/login-social", async (req, res) => {
         await page.waitForTimeout(4000);
 
         // Enter Email
-        const tiktokEmailSelectors = [
-          'input[type="text"]',
-          'input[name="email"]',
-          'input[placeholder*="email" i]',
-        ];
-
+        const tiktokEmailSelectors = ['input[type="text"]', 'input[name="email"]'];
         let tiktokEmailEntered = false;
         for (const selector of tiktokEmailSelectors) {
           try {
-            const input = await page.waitForSelector(selector, {
-              timeout: 5000,
-              state: "visible",
-            });
+            const input = await page.waitForSelector(selector, { timeout: 5000, state: "visible" });
             if (input) {
-              await input.click();
-              await page.waitForTimeout(500);
               await input.fill(tiktokEmail);
               console.log("✅ Email entered");
               tiktokEmailEntered = true;
               break;
             }
-          } catch (e) {
-            continue;
-          }
+          } catch (e) { continue; }
         }
 
-        if (!tiktokEmailEntered) {
-          throw new Error("Could not find TikTok email input");
-        }
+        if (!tiktokEmailEntered) throw new Error("Could not find TikTok email input");
 
         // Enter Password
-        const tiktokPasswordSelectors = [
-          'input[type="password"]',
-          'input[name="password"]',
-        ];
-
+        const tiktokPasswordSelectors = ['input[type="password"]', 'input[name="password"]'];
         let tiktokPasswordEntered = false;
         for (const selector of tiktokPasswordSelectors) {
           try {
-            const input = await page.waitForSelector(selector, {
-              timeout: 5000,
-              state: "visible",
-            });
+            const input = await page.waitForSelector(selector, { timeout: 5000, state: "visible" });
             if (input) {
-              await input.click();
-              await page.waitForTimeout(500);
               await input.fill(password);
               console.log("✅ Password entered");
               tiktokPasswordEntered = true;
               break;
             }
-          } catch (e) {
-            continue;
-          }
+          } catch (e) { continue; }
         }
 
-        if (!tiktokPasswordEntered) {
-          throw new Error("Could not find TikTok password input");
-        }
+        if (!tiktokPasswordEntered) throw new Error("Could not find TikTok password input");
 
         // Click Login
         await page.waitForTimeout(1000);
-        const tiktokLoginSelectors = [
-          'button[type="submit"]',
-          'button:has-text("Log in")',
-          'button[data-e2e="login-button"]',
-        ];
-
+        const tiktokLoginSelectors = ['button[type="submit"]', 'button:has-text("Log in")'];
         let tiktokLoginClicked = false;
         for (const selector of tiktokLoginSelectors) {
           try {
@@ -389,28 +235,34 @@ app.post("/login-social", async (req, res) => {
               tiktokLoginClicked = true;
               break;
             }
-          } catch (e) {
-            continue;
-          }
+          } catch (e) { continue; }
         }
 
-        if (!tiktokLoginClicked) {
-          await page.keyboard.press("Enter");
-        }
+        if (!tiktokLoginClicked) await page.keyboard.press("Enter");
 
         await page.waitForTimeout(8000);
 
         // Check for CAPTCHA
-        const captchaVisible = await page
-          .locator('div:has-text("Verify")')
-          .isVisible({ timeout: 3000 })
-          .catch(() => false);
-
+        const captchaVisible = await page.locator('div:has-text("Verify")').isVisible({ timeout: 3000 }).catch(() => false);
         if (captchaVisible) {
           console.log("⚠️ CAPTCHA detected - waiting 45 seconds...");
           await page.waitForTimeout(45000);
         }
 
+        // Wait for successful redirect
+        try {
+          await page.waitForURL('**/foryou**', { timeout: 15000 });
+          console.log("✅ Successfully redirected to TikTok home");
+        } catch (e) {
+          const currentUrl = page.url();
+          console.log("⚠️ Current URL:", currentUrl);
+          if (currentUrl.includes('/login')) {
+            throw new Error("Login failed - still on login page");
+          }
+        }
+
+        // Extra wait for cookies to settle
+        await page.waitForTimeout(5000);
         console.log("✅ TikTok login completed!");
         break;
 
@@ -433,22 +285,55 @@ app.post("/login-social", async (req, res) => {
         break;
     }
 
+    // Final wait for all platforms
     await page.waitForTimeout(5000);
 
+    // Get storage state
+    console.log("📦 Capturing storage state...");
     const storageState = await context.storageState();
+    
+    console.log("📊 Storage State Details:");
+    console.log("  - Cookies count:", storageState.cookies?.length || 0);
+    console.log("  - Origins count:", storageState.origins?.length || 0);
+    
+    // Show cookie names for debugging
+    if (storageState.cookies && storageState.cookies.length > 0) {
+      const cookieNames = storageState.cookies.map(c => c.name).join(", ");
+      console.log("  - Cookie names:", cookieNames);
+    }
+
+    // Extract auth token
     const authToken = extractAuthToken(storageState.cookies, platform);
+    
+    // Convert to JSON string
+    const sessionDataString = JSON.stringify(storageState);
+    
+    console.log("📏 Data Sizes:");
+    console.log("  - Session Data:", sessionDataString.length, "bytes", 
+                "(" + (sessionDataString.length / 1024).toFixed(2) + " KB)");
+    console.log("  - Cookies:", JSON.stringify(storageState.cookies).length, "bytes");
+    console.log("  - Auth Token:", authToken ? "Found" : "Not found");
 
-    console.log(`✅ Login successful → ${account_id}`);
+    // Log first 500 chars of session data for debugging
+    console.log("📝 Session Data Preview (first 500 chars):");
+    console.log(sessionDataString.substring(0, 500));
 
-    return res.json({
+    const response = {
       success: true,
       message: "Login successful",
-      sessionData: JSON.stringify(storageState),
+      sessionData: sessionDataString,
       cookies: storageState.cookies,
       authToken: authToken,
-    });
+    };
+
+    console.log(`✅ Login successful → ${account_id}`);
+    console.log(`📊 Response prepared with ${Object.keys(response).length} fields`);
+
+    return res.json(response);
+
   } catch (error) {
     console.error("❌ Login failed:", error.message);
+    console.error("Stack trace:", error.stack);
 
     return res.json({
       success: false,
@@ -595,11 +480,12 @@ app.post("/execute-task", async (req, res) => {
       );
     }
 
-    // 🔥 UNLIMITED AUTO-SCROLL (INSTAGRAM & FACEBOOK)
+    // 🔥 UNLIMITED AUTO-SCROLL
     if (taskType === "scroll" || taskType === "share") {
       const options = {
         likeChance: task.likeChance || 30,
         commentChance: task.commentChance || 8,
+        shareChance: task.shareChance || 5,
         comments: task.comments || undefined,
       };
 
@@ -620,12 +506,29 @@ app.post("/execute-task", async (req, res) => {
           info: "Bot will run until you call /stop-scroll",
         });
       }
+
       if (platform === "twitter") {
         twitterScrollBot(page, account.id, options);
         return res.json({
           success: true,
           message: "Twitter unlimited scrolling started",
           info: "Bot will run until you call /stop-scroll",
+        });
+      }
+
+      if (platform === "tiktok") {
+        // ⭐ Pass email and password for TikTok auto-login
+        const tiktokOptions = {
+          ...options,
+          email: account.account_email || account.account_username,
+          password: account.account_password,
+        };
+
+        tiktokScrollBot(page, account.id, tiktokOptions);
+        return res.json({
+          success: true,
+          message: "TikTok unlimited scrolling started (with auto-login)",
+          info: "Bot will automatically log in if needed, then start scrolling. Call /stop-scroll to stop.",
         });
       }
 
@@ -5758,7 +5661,112 @@ async function tiktokFollow(page, targetUrl) {
     };
   }
 }
+async function youtubeFollow(page, targetUrl) {
+  console.log("🔴 Processing YouTube subscribe...");
 
+  try {
+    if (!targetUrl) throw new Error("Target URL missing");
+
+    // Navigate directly to the channel URL
+    console.log(`🔴 Navigating to: ${targetUrl}`);
+    await page.goto(targetUrl, {
+      waitUntil: "networkidle",
+      timeout: 60000,
+    });
+
+    console.log("⏳ YouTube channel loaded, waiting...");
+    await page.waitForTimeout(4000);
+
+    console.log("🔍 Looking for Subscribe button...");
+
+    // Simple and direct approach - find Subscribe button
+    const subscribeButton = await page.evaluate(() => {
+      const buttons = Array.from(document.querySelectorAll("button"));
+      
+      for (const btn of buttons) {
+        const text = btn.textContent?.trim() || "";
+        const ariaLabel = btn.getAttribute('aria-label') || "";
+        
+        // Check if already subscribed
+        if (text === "Subscribed" || ariaLabel.includes("Unsubscribe")) {
+          return { found: true, alreadySubscribed: true };
+        }
+        
+        // Find Subscribe button
+        if (text === "Subscribe" || ariaLabel.includes("Subscribe to")) {
+          btn.setAttribute("data-yt-sub", "true");
+          console.log(`✅ Found Subscribe button: "${text || ariaLabel}"`);
+          return { found: true, alreadySubscribed: false };
+        }
+      }
+      
+      return { found: false, alreadySubscribed: false };
+    });
+
+    if (subscribeButton.alreadySubscribed) {
+      console.log("ℹ️ Already subscribed to this channel");
+      return {
+        success: true,
+        message: "Already subscribed to this channel",
+        alreadySubscribed: true,
+      };
+    }
+
+    if (!subscribeButton.found) {
+      throw new Error("Subscribe button not found on page");
+    }
+
+    // Click the Subscribe button using JavaScript
+    console.log("🖱️ Clicking Subscribe button...");
+    
+    await page.evaluate(() => {
+      const btn = document.querySelector('[data-yt-sub="true"]');
+      if (btn) {
+        btn.click();
+      }
+    });
+
+    console.log("✅ Subscribe button clicked!");
+    await page.waitForTimeout(3000);
+
+    // Verify subscription
+    const isSubscribed = await page.evaluate(() => {
+      const buttons = Array.from(document.querySelectorAll("button"));
+      return buttons.some(btn => {
+        const text = btn.textContent?.trim() || "";
+        return text === "Subscribed";
+      });
+    });
+
+    if (isSubscribed) {
+      console.log("✅ Successfully subscribed to channel!");
+      return {
+        success: true,
+        message: "Channel subscribed successfully",
+        confirmed: true,
+        channel_url: targetUrl,
+      };
+    } else {
+      console.log("⚠️ Subscribe clicked but confirmation pending");
+      return {
+        success: true,
+        message: "Subscribe button clicked",
+        confirmed: false,
+        channel_url: targetUrl,
+      };
+    }
+
+  } catch (error) {
+    console.error("❌ YouTube subscribe failed:", error.message);
+    return {
+      success: false,
+      message: error.message,
+      channel_url: targetUrl,
+    };
+  }
+}
+
+// Update followUser to include YouTube
 async function followUser(page, platform, targetUrl) {
   console.log(`👤 Following user on ${platform}...`);
 
@@ -5771,6 +5779,8 @@ async function followUser(page, platform, targetUrl) {
       return await twitterFollow(page, targetUrl);
     } else if (platform === "tiktok") {
       return await tiktokFollow(page, targetUrl);
+    } else if (platform === "youtube") {
+      return await youtubeFollow(page, targetUrl);
     } else if (platform === "linkedin") {
       return await linkedinFollow(page, targetUrl);
     } else {
@@ -6613,6 +6623,179 @@ async function tiktokUnfollow(page, targetUrl) {
   }
 }
 
+async function youtubeUnfollow(page, targetUrl) {
+  console.log("🔴 Processing YouTube unsubscribe...");
+
+  try {
+    if (!targetUrl) throw new Error("Target URL missing");
+
+    // Navigate directly to the channel
+    console.log(`🔴 Navigating to: ${targetUrl}`);
+    await page.goto(targetUrl, {
+      waitUntil: "networkidle",
+      timeout: 60000,
+    });
+
+    console.log("⏳ YouTube channel loaded, waiting...");
+    await page.waitForTimeout(4000);
+
+    console.log("🔍 Looking for Subscribed button...");
+
+    // Check subscription status
+    const buttonStatus = await page.evaluate(() => {
+      const buttons = Array.from(document.querySelectorAll("button"));
+      
+      for (const btn of buttons) {
+        const text = btn.textContent?.trim() || "";
+        const ariaLabel = btn.getAttribute('aria-label') || "";
+        
+        // Check if subscribed
+        if (text === "Subscribed" || ariaLabel.includes("Unsubscribe")) {
+          btn.setAttribute("data-yt-unsub", "true");
+          console.log("✅ Found Subscribed button");
+          return { found: true, isSubscribed: true };
+        }
+        
+        // Check if not subscribed
+        if (text === "Subscribe" || ariaLabel.includes("Subscribe to")) {
+          console.log("ℹ️ Not subscribed to this channel");
+          return { found: true, isSubscribed: false };
+        }
+      }
+      
+      return { found: false, isSubscribed: false };
+    });
+
+    if (!buttonStatus.found) {
+      throw new Error("Subscription button not found");
+    }
+
+    if (!buttonStatus.isSubscribed) {
+      console.log("ℹ️ Already not subscribed to this channel");
+      return {
+        success: true,
+        message: "Not subscribed to this channel",
+        alreadyUnsubscribed: true,
+      };
+    }
+
+    // Click Subscribed button to open menu
+    console.log("🖱️ Clicking Subscribed button...");
+    
+    await page.evaluate(() => {
+      const btn = document.querySelector('[data-yt-unsub="true"]');
+      if (btn) btn.click();
+    });
+
+    await page.waitForTimeout(2000);
+
+    // Find and click Unsubscribe in menu
+    console.log("🔍 Looking for Unsubscribe option...");
+    
+    const unsubscribeFound = await page.evaluate(() => {
+      const elements = Array.from(document.querySelectorAll('yt-formatted-string, tp-yt-paper-item, button, div'));
+      
+      for (const el of elements) {
+        const text = el.textContent?.trim() || "";
+        
+        if (text === "Unsubscribe") {
+          el.setAttribute("data-yt-unsub-option", "true");
+          console.log("✅ Found Unsubscribe option");
+          return true;
+        }
+      }
+      
+      return false;
+    });
+
+    if (!unsubscribeFound) {
+      throw new Error("Unsubscribe option not found in menu");
+    }
+
+    // Click Unsubscribe
+    console.log("🖱️ Clicking Unsubscribe...");
+    
+    await page.evaluate(() => {
+      const option = document.querySelector('[data-yt-unsub-option="true"]');
+      if (option) option.click();
+    });
+
+    await page.waitForTimeout(2000);
+
+    // Confirm unsubscribe if dialog appears
+    console.log("🔍 Looking for confirmation...");
+    
+    const confirmClicked = await page.evaluate(() => {
+      const buttons = Array.from(document.querySelectorAll('button'));
+      
+      for (const btn of buttons) {
+        const text = btn.textContent?.trim() || "";
+        const ariaLabel = btn.getAttribute('aria-label') || "";
+        
+        if (text === "Unsubscribe" || ariaLabel.includes("Unsubscribe")) {
+          console.log("✅ Found confirmation button");
+          btn.click();
+          return true;
+        }
+      }
+      
+      return false;
+    });
+
+    if (confirmClicked) {
+      console.log("✅ Clicked confirmation");
+    }
+
+    await page.waitForTimeout(3000);
+
+    // Verify unsubscribe
+    console.log("🔍 Verifying unsubscribe...");
+    
+    const verified = await page.evaluate(() => {
+      const buttons = Array.from(document.querySelectorAll("button"));
+      
+      for (const btn of buttons) {
+        const text = btn.textContent?.trim() || "";
+        const ariaLabel = btn.getAttribute('aria-label') || "";
+        
+        if (text === "Subscribe" || ariaLabel.includes("Subscribe to")) {
+          console.log("✅ Verified - button shows Subscribe");
+          return true;
+        }
+      }
+      
+      return false;
+    });
+
+    if (verified) {
+      console.log("✅ YouTube unsubscribe successful!");
+      return {
+        success: true,
+        message: "Channel unsubscribed successfully",
+        verified: true,
+        channel_url: targetUrl,
+      };
+    } else {
+      console.log("⚠️ Unsubscribe completed but verification pending");
+      return {
+        success: true,
+        message: "Unsubscribe action completed",
+        verified: false,
+        channel_url: targetUrl,
+      };
+    }
+
+  } catch (error) {
+    console.error("❌ YouTube unsubscribe failed:", error.message);
+    return {
+      success: false,
+      message: error.message,
+      channel_url: targetUrl,
+    };
+  }
+}
+
+// Update unfollowUser to include YouTube
 async function unfollowUser(page, platform, targetUrl) {
   console.log(`🚫 Unfollowing user on ${platform}...`);
 
@@ -6633,20 +6816,16 @@ async function unfollowUser(page, platform, targetUrl) {
       return await tiktokUnfollow(page, targetUrl);
     }
 
+    if (platform === "youtube") {
+      return await youtubeUnfollow(page, targetUrl);
+    }
+
     return {
       success: false,
       message: `Unfollow not supported for ${platform}`,
     };
   } catch (error) {
     console.error("❌ Unfollow failed:", error.message);
-
-    await page
-      .screenshot({
-        path: `${platform}-unfollow-error-${Date.now()}.png`,
-        fullPage: true,
-      })
-      .catch(() => {});
-
     return { success: false, message: error.message };
   }
 }
@@ -7842,22 +8021,549 @@ async function twitterScrollBot(page, accountId, options = {}) {
     };
   }
 }
-//auth token
-function extractAuthToken(cookies, platform) {
-  const tokenMap = {
-    instagram: "sessionid",
-    facebook: "c_user",
-    twitter: "auth_token",
-    linkedin: "li_at",
-    youtube: "SAPISID",
-    tiktok: "sessionid",
+async function tiktokScrollBot(page, accountId, options = {}) {
+  console.log("🎵 TikTok UNLIMITED scroll bot started...");
+
+  const {
+    likeChance = 35,
+    commentChance = 10,
+    shareChance = 5,
+    comments = [
+      "Love this! 🔥",
+      "Amazing! 💯",
+      "So good! ✨",
+      "Wow! 😍",
+      "This is fire! 🚀",
+      "Great content! 👏",
+      "Can't stop watching! 🤩",
+      "Perfect! ❤️",
+    ],
+    email = null,
+    password = null,
+  } = options;
+
+  // Initialize bot state
+  activeScrollBots[accountId] = {
+    shouldStop: false,
+    platform: "tiktok",
+    stats: {
+      scrolls: 0,
+      likes: 0,
+      comments: 0,
+      shares: 0,
+      attempts: 0,
+      errors: [],
+      startTime: Date.now(),
+    },
   };
 
-  const tokenName = tokenMap[platform];
-  const cookie = cookies.find((c) => c.name === tokenName);
-  return cookie ? cookie.value : null;
-}
+  // Helper function to check if logged in
+  // async function checkIfLoggedIn() {
+  //   try {
+  //     const currentUrl = page.url();
+  //     console.log("📍 Current URL:", currentUrl);
 
+  //     // Check if we're on login page
+  //     if (currentUrl.includes('/login')) {
+  //       return false;
+  //     }
+
+  //     // Check for login indicators
+  //     const loginButton = await page.locator('button:has-text("Log in")').isVisible({ timeout: 2000 }).catch(() => false);
+  //     if (loginButton) {
+  //       return false;
+  //     }
+
+  //     // Check for user profile icon (indicates logged in)
+  //     const profileIcon = await page.locator('[data-e2e="nav-profile"]').isVisible({ timeout: 2000 }).catch(() => false);
+  //     if (profileIcon) {
+  //       console.log("✅ Already logged in (profile icon found)");
+  //       return true;
+  //     }
+
+  //     // Check for upload button (only visible when logged in)
+  //     const uploadButton = await page.locator('[data-e2e="nav-upload"]').isVisible({ timeout: 2000 }).catch(() => false);
+  //     if (uploadButton) {
+  //       console.log("✅ Already logged in (upload button found)");
+  //       return true;
+  //     }
+
+  //     return false;
+  //   } catch (e) {
+  //     console.log("⚠️ Could not determine login status:", e.message);
+  //     return false;
+  //   }
+  // }
+
+  // Helper function to perform login
+  async function performLogin() {
+    try {
+      console.log("🔐 Attempting to log in to TikTok...");
+
+      if (!email || !password) {
+        throw new Error("Email and password are required for login");
+      }
+
+      // Navigate to login page
+      console.log("🌐 Navigating to TikTok login page...");
+      await page.goto("https://www.tiktok.com/login/phone-or-email/email", {
+        waitUntil: "domcontentloaded",
+        timeout: 30000,
+      });
+
+      await page.waitForTimeout(4000);
+
+      // Enter Email
+      console.log("📧 Entering email...");
+      const emailSelectors = ['input[type="text"]', 'input[name="email"]', 'input[placeholder*="email" i]'];
+      let emailEntered = false;
+
+      for (const selector of emailSelectors) {
+        try {
+          const input = await page.waitForSelector(selector, { timeout: 5000, state: "visible" });
+          if (input) {
+            await input.click();
+            await page.waitForTimeout(500);
+            await input.fill(email);
+            console.log("✅ Email entered");
+            emailEntered = true;
+            break;
+          }
+        } catch (e) {
+          continue;
+        }
+      }
+
+      if (!emailEntered) {
+        throw new Error("Could not find TikTok email input");
+      }
+
+      // Enter Password
+      console.log("🔑 Entering password...");
+      const passwordSelectors = ['input[type="password"]', 'input[name="password"]'];
+      let passwordEntered = false;
+
+      for (const selector of passwordSelectors) {
+        try {
+          const input = await page.waitForSelector(selector, { timeout: 5000, state: "visible" });
+          if (input) {
+            await input.click();
+            await page.waitForTimeout(500);
+            await input.fill(password);
+            console.log("✅ Password entered");
+            passwordEntered = true;
+            break;
+          }
+        } catch (e) {
+          continue;
+        }
+      }
+
+      if (!passwordEntered) {
+        throw new Error("Could not find TikTok password input");
+      }
+
+      // Click Login Button
+      console.log("👆 Clicking login button...");
+      await page.waitForTimeout(1000);
+      const loginSelectors = ['button[type="submit"]', 'button:has-text("Log in")', 'button[data-e2e="login-button"]'];
+      let loginClicked = false;
+
+      for (const selector of loginSelectors) {
+        try {
+          const btn = page.locator(selector).first();
+          if (await btn.isVisible({ timeout: 3000 })) {
+            await btn.click();
+            console.log("✅ Login button clicked");
+            loginClicked = true;
+            break;
+          }
+        } catch (e) {
+          continue;
+        }
+      }
+
+      if (!loginClicked) {
+        await page.keyboard.press("Enter");
+        console.log("✅ Pressed Enter to login");
+      }
+
+      await page.waitForTimeout(8000);
+
+      // Check for CAPTCHA
+      const captchaVisible = await page.locator('div:has-text("Verify")').isVisible({ timeout: 3000 }).catch(() => false);
+      if (captchaVisible) {
+        console.log("⚠️ CAPTCHA detected - waiting 60 seconds for manual solve...");
+        console.log("🖐️ Please solve the CAPTCHA manually in the browser");
+        await page.waitForTimeout(60000);
+      }
+
+      // Wait for successful redirect
+      console.log("⏳ Waiting for login to complete...");
+      try {
+        await page.waitForURL('**/foryou**', { timeout: 15000 });
+        console.log("✅ Successfully redirected to TikTok home");
+      } catch (e) {
+        const currentUrl = page.url();
+        console.log("⚠️ Current URL:", currentUrl);
+        
+        if (currentUrl.includes('/login')) {
+          throw new Error("Login failed - still on login page");
+        }
+        
+        console.log("✅ Login appears successful (not on login page)");
+      }
+
+      // Extra wait for cookies to settle
+      await page.waitForTimeout(5000);
+
+      console.log("✅ TikTok login completed successfully!");
+      return true;
+
+    } catch (error) {
+      console.error("❌ TikTok login failed:", error.message);
+      throw error;
+    }
+  }
+
+  // Helper function to check if already liked
+  async function isVideoAlreadyLiked(videoContainer) {
+    try {
+      return await videoContainer.evaluate((container) => {
+        const likeButton = container.querySelector('[data-e2e="like-icon"]') ||
+                          container.querySelector('[data-e2e="browse-like-icon"]') ||
+                          container.querySelector('button[aria-label*="like"]');
+        
+        if (!likeButton) return false;
+
+        const isActive = likeButton.classList.contains('active') || likeButton.classList.contains('liked');
+        if (isActive) return true;
+
+        const svg = likeButton.querySelector('svg');
+        if (svg) {
+          const path = svg.querySelector('path');
+          if (path) {
+            const fill = path.getAttribute('fill');
+            const style = window.getComputedStyle(path);
+            const color = style.fill || style.color || fill;
+            
+            if (color && (color.includes('rgb(254, 44, 85)') || 
+                         color.includes('rgb(255, 43, 84)') ||
+                         color.includes('#FE2C55') ||
+                         color.includes('#ff2b54'))) {
+              return true;
+            }
+          }
+        }
+
+        const ariaLabel = likeButton.getAttribute('aria-label');
+        if (ariaLabel && ariaLabel.toLowerCase().includes('unlike')) {
+          return true;
+        }
+
+        return false;
+      });
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // Helper function to perform like action
+  async function performLike(videoContainer) {
+    try {
+      const strategies = [
+        { name: 'data-e2e', selector: '[data-e2e="like-icon"]' },
+        { name: 'browse-like', selector: '[data-e2e="browse-like-icon"]' },
+        { name: 'aria-label', selector: 'button[aria-label*="like"]' }
+      ];
+
+      for (const strategy of strategies) {
+        try {
+          const likeButton = videoContainer.locator(strategy.selector).first();
+          
+          if (await likeButton.isVisible({ timeout: 2000 }).catch(() => false)) {
+            await likeButton.scrollIntoViewIfNeeded({ timeout: 1000 });
+            await page.waitForTimeout(300 + Math.floor(Math.random() * 200));
+            await likeButton.click({ timeout: 2000 });
+
+            activeScrollBots[accountId].stats.likes++;
+            console.log(`❤️ Liked via ${strategy.name}! (Total: ${activeScrollBots[accountId].stats.likes})`);
+            await page.waitForTimeout(1000 + Math.floor(Math.random() * 1500));
+            return true;
+          }
+        } catch (e) {
+          continue;
+        }
+      }
+
+      console.log("⚠️ Could not find Like button");
+      return false;
+    } catch (e) {
+      console.log("⚠️ Like failed:", e.message);
+      return false;
+    }
+  }
+
+  // Helper function to perform comment action
+  async function performComment(videoContainer) {
+    try {
+      const commentButton = videoContainer.locator('[data-e2e="comment-icon"]').first();
+
+      if (await commentButton.isVisible({ timeout: 2000 }).catch(() => false)) {
+        await commentButton.scrollIntoViewIfNeeded({ timeout: 1000 });
+        await page.waitForTimeout(300);
+        await commentButton.click({ timeout: 2000 });
+        await page.waitForTimeout(2000);
+
+        const commentBox = page.locator('[data-e2e="comment-input"]').first();
+
+        if (await commentBox.isVisible({ timeout: 3000 }).catch(() => false)) {
+          const comment = comments[Math.floor(Math.random() * comments.length)];
+          
+          await commentBox.click({ timeout: 2000 });
+          await page.waitForTimeout(500);
+          await commentBox.pressSequentially(comment, { delay: 100 });
+          await page.waitForTimeout(1000);
+
+          const postButton = page.locator('[data-e2e="comment-post"]').first();
+
+          if (await postButton.isVisible({ timeout: 2000 }).catch(() => false)) {
+            await postButton.click({ timeout: 2000 });
+            
+            activeScrollBots[accountId].stats.comments++;
+            console.log(`💬 Commented: "${comment}" (Total: ${activeScrollBots[accountId].stats.comments})`);
+            await page.waitForTimeout(2000 + Math.floor(Math.random() * 2000));
+
+            await page.keyboard.press("Escape");
+            await page.waitForTimeout(500);
+            return true;
+          }
+        }
+      }
+
+      return false;
+    } catch (e) {
+      try {
+        await page.keyboard.press("Escape");
+      } catch {}
+      return false;
+    }
+  }
+
+  // Helper function to perform share action
+  async function performShare(videoContainer) {
+    try {
+      const shareButton = videoContainer.locator('[data-e2e="share-icon"]').first();
+
+      if (await shareButton.isVisible({ timeout: 2000 }).catch(() => false)) {
+        await shareButton.scrollIntoViewIfNeeded({ timeout: 1000 });
+        await page.waitForTimeout(300);
+        await shareButton.click({ timeout: 2000 });
+
+        activeScrollBots[accountId].stats.shares++;
+        console.log(`🔗 Shared! (Total: ${activeScrollBots[accountId].stats.shares})`);
+        await page.waitForTimeout(1000 + Math.floor(Math.random() * 1500));
+
+        await page.keyboard.press("Escape");
+        await page.waitForTimeout(500);
+        return true;
+      }
+
+      return false;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  try {
+    // ⭐ STEP 1: Check if logged in, if not, perform login
+    console.log("🔍 Checking login status...");
+    
+    await page.goto("https://www.tiktok.com/foryou", {
+      waitUntil: "domcontentloaded",
+      timeout: 30000,
+    });
+    await page.waitForTimeout(3000);
+
+    const isLoggedIn = await checkIfLoggedIn();
+
+    if (!isLoggedIn) {
+      console.log("🔐 Not logged in - attempting to log in...");
+      await performLogin();
+    } else {
+      console.log("✅ Already logged in - proceeding to scroll");
+    }
+
+    // ⭐ STEP 2: Navigate to For You page (if not already there)
+    console.log("🏠 Ensuring we're on the For You page...");
+    const currentUrl = page.url();
+    
+    if (!currentUrl.includes('/foryou')) {
+      await page.goto("https://www.tiktok.com/foryou", {
+        waitUntil: "domcontentloaded",
+        timeout: 30000,
+      });
+      await page.waitForTimeout(5000);
+    }
+
+    console.log("✅ Ready to start scrolling!");
+
+    let scrollIteration = 0;
+    let consecutiveErrors = 0;
+    const MAX_CONSECUTIVE_ERRORS = 10;
+
+    // ⭐ STEP 3: Start infinite scroll loop
+    while (!activeScrollBots[accountId]?.shouldStop) {
+      scrollIteration++;
+      console.log(`\n⬇️ Scroll iteration: ${scrollIteration}`);
+
+      await page.keyboard.press("ArrowDown");
+      await page.waitForTimeout(3000 + Math.floor(Math.random() * 2000));
+
+      activeScrollBots[accountId].stats.scrolls = scrollIteration;
+
+      let videoContainers = await page.locator('[data-e2e="recommend-list-item-container"]').all();
+
+      if (videoContainers.length === 0) {
+        videoContainers = await page.locator('div[class*="DivVideoContainer"]').all();
+      }
+
+      if (videoContainers.length === 0) {
+        videoContainers = await page.locator('div[class*="DivItemContainer"]').all();
+      }
+
+      if (videoContainers.length === 0) {
+        console.log("⚠️ No videos found, continuing...");
+        consecutiveErrors++;
+
+        if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+          console.log("❌ Too many errors, stopping");
+          break;
+        }
+        continue;
+      }
+
+      consecutiveErrors = 0;
+      const videoContainer = videoContainers[0];
+
+      try {
+        await videoContainer.scrollIntoViewIfNeeded({ timeout: 3000 });
+        await page.waitForTimeout(1500);
+
+        if (activeScrollBots[accountId]?.shouldStop) break;
+
+        activeScrollBots[accountId].stats.attempts++;
+
+        const alreadyLiked = await isVideoAlreadyLiked(videoContainer);
+        
+        // ❤️ LIKE
+        if (Math.random() * 100 < likeChance) {
+          if (alreadyLiked) {
+            console.log("❤️ Already liked, skipping...");
+          } else {
+            await performLike(videoContainer);
+          }
+          await page.waitForTimeout(500 + Math.floor(Math.random() * 1000));
+        }
+
+        if (activeScrollBots[accountId]?.shouldStop) break;
+
+        // 🔗 SHARE
+        if (Math.random() * 100 < shareChance) {
+          await performShare(videoContainer);
+          await page.waitForTimeout(500 + Math.floor(Math.random() * 1000));
+        }
+
+        if (activeScrollBots[accountId]?.shouldStop) break;
+
+        // 💬 COMMENT
+        if (Math.random() * 100 < commentChance) {
+          await performComment(videoContainer);
+        }
+      } catch (err) {
+        console.log("⚠️ Interaction error:", err.message);
+        consecutiveErrors++;
+      }
+
+      // Random pause every 5-8 scrolls
+      if (scrollIteration % (5 + Math.floor(Math.random() * 4)) === 0) {
+        const pauseDuration = 5000 + Math.floor(Math.random() * 5000);
+        console.log(`⏸️ Taking a ${Math.floor(pauseDuration / 1000)}s break...`);
+        await page.waitForTimeout(pauseDuration);
+      }
+
+      if (activeScrollBots[accountId]?.shouldStop) {
+        console.log("🛑 Stop signal received");
+        break;
+      }
+    }
+
+    const finalStats = activeScrollBots[accountId].stats;
+    const duration = Math.floor((Date.now() - finalStats.startTime) / 1000);
+
+    console.log("\n✅ TikTok scroll bot stopped");
+    console.log(`📊 Stats: Scrolls: ${finalStats.scrolls} | Likes: ${finalStats.likes} | Comments: ${finalStats.comments} | Shares: ${finalStats.shares}`);
+    console.log(`⏱️ Duration: ${duration}s`);
+
+    delete activeScrollBots[accountId];
+
+    return {
+      success: true,
+      message: "TikTok scrolling stopped",
+      stats: { ...finalStats, duration: `${duration}s` },
+    };
+  } catch (error) {
+    console.error("❌ TikTok bot error:", error.message);
+
+    if (activeScrollBots[accountId]) {
+      activeScrollBots[accountId].stats.errors.push(error.message);
+    }
+
+    delete activeScrollBots[accountId];
+
+    return {
+      success: false,
+      message: error.message,
+    };
+  }
+}
+//auth token
+// function extractAuthToken(cookies, platform) {
+//   const tokenMap = {
+//     instagram: "sessionid",
+//     facebook: "c_user",
+//     twitter: "auth_token",
+//     linkedin: "li_at",
+//     youtube: "SAPISID",
+//     tiktok: ['sessionid', 'tt_webid', 'tt_webid_v2', 'sid_tt'],
+//   };
+
+//   const tokenName = tokenMap[platform];
+//   const cookie = cookies.find((c) => c.name === tokenName);
+//   return cookie ? cookie.value : null;
+// }
+function extractAuthToken(cookies, platform) {
+  if (!cookies || cookies.length === 0) return null;
+
+  const tokenMap = {
+    instagram: ['sessionid', 'csrftoken'],
+    facebook: ['c_user', 'xs'],
+    twitter: ['auth_token', 'ct0'],
+    tiktok: ['sessionid', 'tt_webid', 'tt_webid_v2', 'sid_tt'], // TikTok tokens
+    linkedin: ['li_at', 'JSESSIONID'],
+    youtube: ['SAPISID', 'SSID'],
+  };
+
+  const tokens = tokenMap[platform] || [];
+  
+  for (const cookie of cookies) {
+    if (tokens.includes(cookie.name)) {
+      return cookie.value;
+    }
+  }
+
+  return null;
+}
 app.listen(PORT, () => {
   console.log(`🚀 Node API running http://localhost:${PORT}`);
 });
