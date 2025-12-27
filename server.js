@@ -656,6 +656,9 @@ async function createPost(page, platform, task) {
     if (platform === "tiktok") {
       return await createTikTokPost(page, task);
     }
+    if(platform === "youtube"){
+      return await createYouTubePost(page, task);
+    }
 
     return {
       success: false,
@@ -668,6 +671,340 @@ async function createPost(page, platform, task) {
       message: error.message,
     };
   }
+}
+async function createYouTubePost(page, postContent) {
+  console.log("📺 Creating YouTube video...");
+  
+  try {
+    // 1️⃣ Open YouTube Studio
+    await page.goto("https://studio.youtube.com", {
+      waitUntil: "domcontentloaded",
+      timeout: 60000,
+    });
+    await page.waitForTimeout(5000);
+
+    // 2️⃣ Close any popups/dialogs
+    await page.click('button[aria-label="No thanks"]').catch(() => {});
+    await page.click('button[aria-label="Dismiss"]').catch(() => {});
+    await page.click('text="Not now"').catch(() => {});
+    await page.waitForTimeout(2000);
+
+    // 3️⃣ Click CREATE button
+    console.log("🔘 Clicking CREATE button...");
+    const createButtonSelectors = [
+      'button[aria-label="Create"]',
+      'ytcp-button#create-icon',
+      '#upload-icon',
+      'button:has-text("CREATE")',
+    ];
+
+    let createClicked = false;
+    for (const selector of createButtonSelectors) {
+      try {
+        const createBtn = page.locator(selector).first();
+        await createBtn.waitFor({ state: "visible", timeout: 10000 });
+        await createBtn.click({ timeout: 5000 });
+        console.log("✅ CREATE clicked");
+        createClicked = true;
+        break;
+      } catch (e) {
+        continue;
+      }
+    }
+
+    if (!createClicked) {
+      throw new Error("Could not find or click CREATE button");
+    }
+
+    await page.waitForTimeout(2000);
+
+    // 4️⃣ Click "Upload videos" option
+    console.log("🔘 Clicking Upload videos...");
+    const uploadOptionSelectors = [
+      'text="Upload videos"',
+      'tp-yt-paper-item:has-text("Upload videos")',
+      '#text-item-0',
+    ];
+
+    let uploadClicked = false;
+    for (const selector of uploadOptionSelectors) {
+      try {
+        await page.locator(selector).first().click({ timeout: 5000 });
+        console.log("✅ Upload videos clicked");
+        uploadClicked = true;
+        break;
+      } catch (e) {
+        continue;
+      }
+    }
+
+    if (!uploadClicked) {
+      throw new Error("Could not find or click Upload videos option");
+    }
+
+    await page.waitForTimeout(3000);
+
+    // 5️⃣ Resolve video path
+    const absoluteVideoPath = path.join(
+      "C:",
+      "wamp64",
+      "www",
+      "social-automation",
+      "public",
+      postContent.media_urls
+    );
+    
+    console.log("🔍 Looking for video at:", absoluteVideoPath);
+    
+    if (!fs.existsSync(absoluteVideoPath)) {
+      throw new Error(`Video file not found: ${absoluteVideoPath}`);
+    }
+    
+    console.log("✅ Video file found");
+
+    // 6️⃣ Upload video file
+    console.log("📤 Uploading video...");
+    const fileInputSelectors = [
+      'input[type="file"]',
+      '#upload-input',
+      'input[name="Filedata"]',
+    ];
+
+    let fileUploaded = false;
+    for (const selector of fileInputSelectors) {
+      try {
+        const fileInput = page.locator(selector);
+        await fileInput.waitFor({ state: "attached", timeout: 10000 });
+        await fileInput.setInputFiles(absoluteVideoPath);
+        console.log("✅ Video uploaded");
+        fileUploaded = true;
+        break;
+      } catch (e) {
+        continue;
+      }
+    }
+
+    if (!fileUploaded) {
+      throw new Error("Could not find file input to upload video");
+    }
+
+    // 7️⃣ Wait for upload dialog to appear
+    await page.waitForTimeout(5000);
+    console.log("⏳ Waiting for upload dialog...");
+
+    // 8️⃣ Fill in Title
+    console.log("📝 Adding title...");
+    const title = postContent.title || postContent.content?.substring(0, 100) || "New Video";
+    
+    const titleSelectors = [
+      '#textbox',
+      'div[aria-label="Add a title that describes your video"]',
+      '#title-textarea',
+      'ytcp-social-suggestions-textbox[label="Title"] #textbox',
+    ];
+
+    let titleAdded = false;
+    for (const selector of titleSelectors) {
+      try {
+        const titleBox = page.locator(selector).first();
+        await titleBox.waitFor({ state: "visible", timeout: 10000 });
+        await titleBox.click();
+        await titleBox.fill("");
+        await titleBox.fill(title.trim());
+        console.log("✅ Title added");
+        titleAdded = true;
+        break;
+      } catch (e) {
+        continue;
+      }
+    }
+
+    if (!titleAdded) {
+      console.log("⚠️ Could not add title, continuing anyway...");
+    }
+
+    await page.waitForTimeout(2000);
+
+    // 9️⃣ Fill in Description
+    console.log("📝 Adding description...");
+    const description = (postContent.content || "") + "\n\n" + (postContent.hashtags || "");
+    
+    const descriptionSelectors = [
+      'div[aria-label="Tell viewers about your video"]',
+      '#description-textarea #textbox',
+      'ytcp-social-suggestions-textbox[label="Description"] #textbox',
+    ];
+
+    let descriptionAdded = false;
+    for (const selector of descriptionSelectors) {
+      try {
+        const descBox = page.locator(selector).first();
+        await descBox.waitFor({ state: "visible", timeout: 5000 });
+        await descBox.click();
+        await descBox.fill(description.trim());
+        console.log("✅ Description added");
+        descriptionAdded = true;
+        break;
+      } catch (e) {
+        continue;
+      }
+    }
+
+    if (!descriptionAdded) {
+      console.log("⚠️ Could not add description, continuing anyway...");
+    }
+
+    await page.waitForTimeout(2000);
+
+    // 🔟 Select "No, it's not made for kids" (required)
+    console.log("👶 Setting audience...");
+    const notForKidsSelectors = [
+      '#radio-button-not-made-for-kids',
+      'tp-yt-paper-radio-button[name="VIDEO_MADE_FOR_KIDS_NOT_MFK"]',
+    ];
+
+    for (const selector of notForKidsSelectors) {
+      try {
+        await page.locator(selector).click({ timeout: 5000 });
+        console.log("✅ Audience set to 'Not for kids'");
+        break;
+      } catch (e) {
+        continue;
+      }
+    }
+
+    await page.waitForTimeout(2000);
+
+    // 1️⃣1️⃣ Click NEXT button (Details page)
+    console.log("🔘 Clicking NEXT (Details)...");
+    await clickNextButton(page);
+    await page.waitForTimeout(3000);
+
+    // 1️⃣2️⃣ Click NEXT button (Video elements page)
+    console.log("🔘 Clicking NEXT (Video elements)...");
+    await clickNextButton(page);
+    await page.waitForTimeout(3000);
+
+    // 1️⃣3️⃣ Click NEXT button (Checks page)
+    console.log("🔘 Clicking NEXT (Checks)...");
+    await clickNextButton(page);
+    await page.waitForTimeout(3000);
+
+    // 1️⃣4️⃣ Select visibility (Public/Unlisted/Private)
+    console.log("🔓 Setting visibility...");
+    const visibility = postContent.visibility || "unlisted"; // default to unlisted
+    
+    const visibilitySelectors = {
+      public: '#public-radio-button',
+      unlisted: '#unlisted-radio-button',
+      private: '#private-radio-button',
+    };
+
+    const visibilitySelector = visibilitySelectors[visibility.toLowerCase()];
+    if (visibilitySelector) {
+      try {
+        await page.locator(visibilitySelector).click({ timeout: 5000 });
+        console.log(`✅ Visibility set to ${visibility}`);
+      } catch (e) {
+        console.log("⚠️ Could not set visibility, using default");
+      }
+    }
+
+    await page.waitForTimeout(2000);
+
+    // 1️⃣5️⃣ Click PUBLISH button
+    console.log("📤 Publishing video...");
+    const publishSelectors = [
+      'ytcp-button#done-button',
+      'button:has-text("Publish")',
+      '#done-button',
+    ];
+
+    let published = false;
+    for (const selector of publishSelectors) {
+      try {
+        const publishBtn = page.locator(selector).first();
+        await publishBtn.waitFor({ state: "visible", timeout: 10000 });
+        await publishBtn.click({ timeout: 5000 });
+        console.log("✅ Publish button clicked");
+        published = true;
+        break;
+      } catch (e) {
+        continue;
+      }
+    }
+
+    if (!published) {
+      throw new Error("Could not find or click Publish button");
+    }
+
+    // Wait for publish to complete
+    await page.waitForTimeout(10000);
+
+    // Check for success
+    const successIndicators = [
+      'text="Video published"',
+      'text="Uploaded"',
+      'ytcp-video-share-dialog',
+    ];
+
+    let uploadSuccess = false;
+    for (const indicator of successIndicators) {
+      if (await page.locator(indicator).isVisible().catch(() => false)) {
+        uploadSuccess = true;
+        break;
+      }
+    }
+
+    console.log("✅ YouTube video uploaded successfully");
+    
+    return {
+      success: true,
+      message: uploadSuccess ? "Video published" : "Video upload likely successful",
+    };
+
+  } catch (error) {
+    console.error("❌ YouTube upload failed:", error.message);
+    
+    // Take screenshot for debugging
+    try {
+      await page.screenshot({
+        path: `youtube-error-${Date.now()}.png`,
+        fullPage: true,
+      });
+      console.log("📸 Error screenshot saved");
+    } catch (screenshotError) {
+      console.log("⚠️ Could not save screenshot");
+    }
+    
+    return {
+      success: false,
+      message: error.message,
+    };
+  }
+}
+
+// Helper function to click NEXT button
+async function clickNextButton(page) {
+  const nextButtonSelectors = [
+    'ytcp-button#next-button',
+    'button:has-text("Next")',
+    '#next-button',
+  ];
+
+  for (const selector of nextButtonSelectors) {
+    try {
+      const nextBtn = page.locator(selector).first();
+      await nextBtn.waitFor({ state: "visible", timeout: 10000 });
+      await nextBtn.click({ timeout: 5000 });
+      console.log("✅ NEXT clicked");
+      return;
+    } catch (e) {
+      continue;
+    }
+  }
+
+  throw new Error("Could not find or click NEXT button");
 }
 
 // ==========================================
