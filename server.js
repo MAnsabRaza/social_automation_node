@@ -50,8 +50,9 @@ async function solveCaptcha(siteURL, siteKey) {
 // PLATFORM URLS
 const LOGIN_URL = {
   instagram: "https://www.instagram.com/accounts/login/",
-  facebook: "https://www.facebook.com/login/", 
-  youtube: "https://accounts.google.com/v3/signin/identifier?continue=https%3A%2F%2Fwww.youtube.com%2Fsignin%3Faction_handle_signin%3Dtrue%26app%3Ddesktop%26hl%3Den%26next%3Dhttps%253A%252F%252Fwww.youtube.com%252F&dsh=S1359224021%3A1766843685369378&ec=65620&hl=en&ifkv=Ac2yZaUMabvbQcslE6h1iTgIEGmRjXVU4CAOAA3pbO8EMLrrsucsaRPXf8CT6G_l1hpDocOn9-GI2A&passive=true&service=youtube&uilel=3&flowName=GlifWebSignIn&flowEntry=ServiceLogin",
+  facebook: "https://www.facebook.com/login/",
+  youtube:
+    "https://accounts.google.com/v3/signin/identifier?continue=https%3A%2F%2Fwww.youtube.com%2Fsignin%3Faction_handle_signin%3Dtrue%26app%3Ddesktop%26hl%3Den%26next%3Dhttps%253A%252F%252Fwww.youtube.com%252F&dsh=S1359224021%3A1766843685369378&ec=65620&hl=en&ifkv=Ac2yZaUMabvbQcslE6h1iTgIEGmRjXVU4CAOAA3pbO8EMLrrsucsaRPXf8CT6G_l1hpDocOn9-GI2A&passive=true&service=youtube&uilel=3&flowName=GlifWebSignIn&flowEntry=ServiceLogin",
   tiktok: "https://www.tiktok.com/login/phone-or-email/email",
   twitter: "https://twitter.com/login",
   linkedin: "https://www.linkedin.com/login",
@@ -119,7 +120,9 @@ app.post("/login-social", async (req, res) => {
 
     switch (platform) {
       case "instagram":
-        await page.waitForSelector('input[name="username"]', { timeout: 30000 });
+        await page.waitForSelector('input[name="username"]', {
+          timeout: 30000,
+        });
         await page.fill('input[name="username"]', username);
         await page.fill('input[name="password"]', password);
         await page.click('button[type="submit"]');
@@ -140,41 +143,55 @@ app.post("/login-social", async (req, res) => {
         console.log("🐦 Starting Twitter login flow...");
         const twitterEmail = req.body.email || username;
         const twitterUsername = req.body.twitter_username || username;
-        
+
         await page.waitForTimeout(3000);
-        
+
         // Email entry
-        const emailSelectors = ['input[autocomplete="username"]', 'input[name="text"]'];
+        const emailSelectors = [
+          'input[autocomplete="username"]',
+          'input[name="text"]',
+        ];
         let emailEntered = false;
         for (const selector of emailSelectors) {
           try {
-            const input = await page.waitForSelector(selector, { timeout: 5000, state: "visible" });
+            const input = await page.waitForSelector(selector, {
+              timeout: 5000,
+              state: "visible",
+            });
             if (input) {
               await input.fill(twitterEmail);
               emailEntered = true;
               break;
             }
-          } catch (e) { continue; }
+          } catch (e) {
+            continue;
+          }
         }
-        
+
         if (!emailEntered) throw new Error("Could not find email input");
-        
+
         await page.waitForTimeout(1000);
         await page.keyboard.press("Enter");
         await page.waitForTimeout(4000);
-        
+
         // Username if required
         try {
-          const usernameInput = await page.waitForSelector('input[data-testid="ocfEnterTextTextInput"]', { timeout: 5000 });
+          const usernameInput = await page.waitForSelector(
+            'input[data-testid="ocfEnterTextTextInput"]',
+            { timeout: 5000 }
+          );
           if (usernameInput) {
             await usernameInput.fill(twitterUsername.replace("@", ""));
             await page.keyboard.press("Enter");
             await page.waitForTimeout(4000);
           }
-        } catch (e) { }
-        
+        } catch (e) {}
+
         // Password
-        const passwordInput = await page.waitForSelector('input[name="password"]', { timeout: 8000 });
+        const passwordInput = await page.waitForSelector(
+          'input[name="password"]',
+          { timeout: 8000 }
+        );
         await passwordInput.fill(password);
         await page.waitForTimeout(1500);
         await page.keyboard.press("Enter");
@@ -189,42 +206,63 @@ app.post("/login-social", async (req, res) => {
         await page.waitForTimeout(4000);
 
         // Enter Email
-        const tiktokEmailSelectors = ['input[type="text"]', 'input[name="email"]'];
+        const tiktokEmailSelectors = [
+          'input[type="text"]',
+          'input[name="email"]',
+        ];
         let tiktokEmailEntered = false;
         for (const selector of tiktokEmailSelectors) {
           try {
-            const input = await page.waitForSelector(selector, { timeout: 5000, state: "visible" });
+            const input = await page.waitForSelector(selector, {
+              timeout: 5000,
+              state: "visible",
+            });
             if (input) {
               await input.fill(tiktokEmail);
               console.log("✅ Email entered");
               tiktokEmailEntered = true;
               break;
             }
-          } catch (e) { continue; }
+          } catch (e) {
+            continue;
+          }
         }
 
-        if (!tiktokEmailEntered) throw new Error("Could not find TikTok email input");
+        if (!tiktokEmailEntered)
+          throw new Error("Could not find TikTok email input");
 
         // Enter Password
-        const tiktokPasswordSelectors = ['input[type="password"]', 'input[name="password"]'];
+        const tiktokPasswordSelectors = [
+          'input[type="password"]',
+          'input[name="password"]',
+        ];
         let tiktokPasswordEntered = false;
         for (const selector of tiktokPasswordSelectors) {
           try {
-            const input = await page.waitForSelector(selector, { timeout: 5000, state: "visible" });
+            const input = await page.waitForSelector(selector, {
+              timeout: 5000,
+              state: "visible",
+            });
             if (input) {
               await input.fill(password);
               console.log("✅ Password entered");
               tiktokPasswordEntered = true;
               break;
             }
-          } catch (e) { continue; }
+          } catch (e) {
+            continue;
+          }
         }
 
-        if (!tiktokPasswordEntered) throw new Error("Could not find TikTok password input");
+        if (!tiktokPasswordEntered)
+          throw new Error("Could not find TikTok password input");
 
         // Click Login
         await page.waitForTimeout(1000);
-        const tiktokLoginSelectors = ['button[type="submit"]', 'button:has-text("Log in")'];
+        const tiktokLoginSelectors = [
+          'button[type="submit"]',
+          'button:has-text("Log in")',
+        ];
         let tiktokLoginClicked = false;
         for (const selector of tiktokLoginSelectors) {
           try {
@@ -235,7 +273,9 @@ app.post("/login-social", async (req, res) => {
               tiktokLoginClicked = true;
               break;
             }
-          } catch (e) { continue; }
+          } catch (e) {
+            continue;
+          }
         }
 
         if (!tiktokLoginClicked) await page.keyboard.press("Enter");
@@ -243,7 +283,10 @@ app.post("/login-social", async (req, res) => {
         await page.waitForTimeout(8000);
 
         // Check for CAPTCHA
-        const captchaVisible = await page.locator('div:has-text("Verify")').isVisible({ timeout: 3000 }).catch(() => false);
+        const captchaVisible = await page
+          .locator('div:has-text("Verify")')
+          .isVisible({ timeout: 3000 })
+          .catch(() => false);
         if (captchaVisible) {
           console.log("⚠️ CAPTCHA detected - waiting 45 seconds...");
           await page.waitForTimeout(45000);
@@ -251,12 +294,12 @@ app.post("/login-social", async (req, res) => {
 
         // Wait for successful redirect
         try {
-          await page.waitForURL('**/foryou**', { timeout: 15000 });
+          await page.waitForURL("**/foryou**", { timeout: 15000 });
           console.log("✅ Successfully redirected to TikTok home");
         } catch (e) {
           const currentUrl = page.url();
           console.log("⚠️ Current URL:", currentUrl);
-          if (currentUrl.includes('/login')) {
+          if (currentUrl.includes("/login")) {
             throw new Error("Login failed - still on login page");
           }
         }
@@ -291,27 +334,35 @@ app.post("/login-social", async (req, res) => {
     // Get storage state
     console.log("📦 Capturing storage state...");
     const storageState = await context.storageState();
-    
+
     console.log("📊 Storage State Details:");
     console.log("  - Cookies count:", storageState.cookies?.length || 0);
     console.log("  - Origins count:", storageState.origins?.length || 0);
-    
+
     // Show cookie names for debugging
     if (storageState.cookies && storageState.cookies.length > 0) {
-      const cookieNames = storageState.cookies.map(c => c.name).join(", ");
+      const cookieNames = storageState.cookies.map((c) => c.name).join(", ");
       console.log("  - Cookie names:", cookieNames);
     }
 
     // Extract auth token
     const authToken = extractAuthToken(storageState.cookies, platform);
-    
+
     // Convert to JSON string
     const sessionDataString = JSON.stringify(storageState);
-    
+
     console.log("📏 Data Sizes:");
-    console.log("  - Session Data:", sessionDataString.length, "bytes", 
-                "(" + (sessionDataString.length / 1024).toFixed(2) + " KB)");
-    console.log("  - Cookies:", JSON.stringify(storageState.cookies).length, "bytes");
+    console.log(
+      "  - Session Data:",
+      sessionDataString.length,
+      "bytes",
+      "(" + (sessionDataString.length / 1024).toFixed(2) + " KB)"
+    );
+    console.log(
+      "  - Cookies:",
+      JSON.stringify(storageState.cookies).length,
+      "bytes"
+    );
     console.log("  - Auth Token:", authToken ? "Found" : "Not found");
 
     // Log first 500 chars of session data for debugging
@@ -327,10 +378,11 @@ app.post("/login-social", async (req, res) => {
     };
 
     console.log(`✅ Login successful → ${account_id}`);
-    console.log(`📊 Response prepared with ${Object.keys(response).length} fields`);
+    console.log(
+      `📊 Response prepared with ${Object.keys(response).length} fields`
+    );
 
     return res.json(response);
-
   } catch (error) {
     console.error("❌ Login failed:", error.message);
     console.error("Stack trace:", error.stack);
@@ -512,6 +564,20 @@ app.post("/execute-task", async (req, res) => {
         return res.json({
           success: true,
           message: "Twitter unlimited scrolling started",
+          info: "Bot will run until you call /stop-scroll",
+        });
+      }
+      if (platform === "youtube") {
+        const youtubeOptions = {
+          likeChance: task.likeChance || 35,
+          commentChance: task.commentChance || 10,
+          comments: task.comments || undefined,
+        };
+
+        youtubeScrollBot(page, account.id, youtubeOptions);
+        return res.json({
+          success: true,
+          message: "YouTube Shorts unlimited scrolling started",
           info: "Bot will run until you call /stop-scroll",
         });
       }
@@ -3476,6 +3542,176 @@ async function tiktokLike(page, targetUrl) {
   }
 }
 
+async function youtubeLike(page, targetUrl) {
+  console.log("❤️ Liking YouTube video...");
+
+  try {
+    if (!targetUrl) throw new Error("Target URL missing");
+
+    // Navigate to video
+    console.log(`🔴 Navigating to: ${targetUrl}`);
+    await page.goto(targetUrl, {
+      waitUntil: "networkidle",
+      timeout: 60000,
+    });
+
+    console.log("⏳ YouTube video loaded, waiting...");
+    await page.waitForTimeout(5000);
+
+    // Scroll to ensure video actions are loaded
+    await page.evaluate(() => {
+      window.scrollBy(0, 300);
+    });
+    await page.waitForTimeout(2000);
+
+    console.log("🔍 Searching for like button...");
+
+    // Find the like button
+    const buttonInfo = await page.evaluate(() => {
+      const buttons = Array.from(document.querySelectorAll("button"));
+
+      for (const btn of buttons) {
+        const ariaLabel = btn.getAttribute("aria-label") || "";
+
+        // Check if it's a like button
+        if (ariaLabel.toLowerCase().includes("like this video")) {
+          console.log("Found like button:", ariaLabel);
+
+          // Check if already liked
+          if (ariaLabel.toLowerCase().includes("dislike")) {
+            // If aria-label says "dislike", it means video is already liked
+            return { found: true, alreadyLiked: true };
+          }
+
+          // Check button pressed state
+          const isPressed = btn.getAttribute("aria-pressed") === "true";
+          if (isPressed) {
+            return { found: true, alreadyLiked: true };
+          }
+
+          // Mark button for clicking
+          btn.setAttribute("data-yt-like", "true");
+          return { found: true, alreadyLiked: false };
+        }
+      }
+
+      return { found: false, alreadyLiked: false };
+    });
+
+    console.log("Button search result:", buttonInfo);
+
+    if (buttonInfo.alreadyLiked) {
+      console.log("💗 YouTube video already liked");
+      return {
+        success: true,
+        message: "YouTube video already liked",
+        alreadyLiked: true,
+        video_url: targetUrl,
+      };
+    }
+
+    if (!buttonInfo.found) {
+      throw new Error("YouTube Like button not found");
+    }
+
+    console.log("✅ Like button found! Clicking...");
+    await page.waitForTimeout(1000);
+
+    // Click the like button
+    let clickSuccess = false;
+
+    // Strategy 1: Locator click
+    try {
+      const likeBtn = page.locator('[data-yt-like="true"]').first();
+      await likeBtn.scrollIntoViewIfNeeded();
+      await page.waitForTimeout(500);
+      await likeBtn.click({ timeout: 5000 });
+      clickSuccess = true;
+      console.log("✅ Clicked via locator");
+    } catch (e) {
+      console.log("⚠️ Locator click failed");
+    }
+
+    // Strategy 2: JavaScript click
+    if (!clickSuccess) {
+      try {
+        await page.evaluate(() => {
+          const btn = document.querySelector('[data-yt-like="true"]');
+          if (btn) btn.click();
+        });
+        clickSuccess = true;
+        console.log("✅ Clicked via JavaScript");
+      } catch (e) {
+        console.log("⚠️ JS click failed");
+      }
+    }
+
+    // Strategy 3: Force click
+    if (!clickSuccess) {
+      try {
+        const likeBtn = page.locator('[data-yt-like="true"]').first();
+        await likeBtn.click({ force: true, timeout: 5000 });
+        clickSuccess = true;
+        console.log("✅ Clicked via force");
+      } catch (e) {
+        console.log("⚠️ Force click failed");
+      }
+    }
+
+    if (!clickSuccess) {
+      throw new Error("Failed to click like button");
+    }
+
+    // Wait for like to register
+    console.log("⏳ Waiting for like to register...");
+    await page.waitForTimeout(3000);
+
+    // Verify like was successful
+    const verified = await page.evaluate(() => {
+      const buttons = Array.from(document.querySelectorAll("button"));
+
+      for (const btn of buttons) {
+        const ariaLabel = btn.getAttribute("aria-label") || "";
+        const isPressed = btn.getAttribute("aria-pressed") === "true";
+
+        // Check if button is now pressed or aria-label changed
+        if (ariaLabel.toLowerCase().includes("like this video") && isPressed) {
+          console.log("✅ Like verified - button is pressed");
+          return true;
+        }
+      }
+
+      return false;
+    });
+
+    if (verified) {
+      console.log("❤️ Like confirmed!");
+      return {
+        success: true,
+        message: "YouTube video liked successfully",
+        confirmed: true,
+        video_url: targetUrl,
+      };
+    } else {
+      console.warn("⚠️ Like clicked but verification pending");
+      return {
+        success: true,
+        message: "Like button clicked (verification pending)",
+        confirmed: false,
+        video_url: targetUrl,
+      };
+    }
+  } catch (error) {
+    console.error("❌ YouTube like error:", error.message);
+    return {
+      success: false,
+      message: error.message,
+      video_url: targetUrl,
+    };
+  }
+}
+
+// Update likePost to include YouTube
 async function likePost(page, platform, targetUrl) {
   console.log(`❤️ Liking post on ${platform}...`);
 
@@ -3498,21 +3734,16 @@ async function likePost(page, platform, targetUrl) {
       return await tiktokLike(page, targetUrl);
     }
 
+    if (platform === "youtube") {
+      return await youtubeLike(page, targetUrl);
+    }
+
     return {
       success: false,
       message: `Like not supported for platform: ${platform}`,
     };
   } catch (error) {
     console.error(`❌ Like failed on ${platform}:`, error.message);
-
-    // Debug screenshot
-    try {
-      await page.screenshot({
-        path: `${platform}-like-error-${Date.now()}.png`,
-        fullPage: false,
-      });
-    } catch {}
-
     return {
       success: false,
       message: error.message,
@@ -4757,8 +4988,244 @@ async function tiktokComment(page, targetUrl, commentText) {
     };
   }
 }
+async function youtubeComment(page, targetUrl, commentText) {
+  console.log("🔴 Commenting on YouTube...");
 
-// Main function to handle all platforms
+  if (!targetUrl) throw new Error("Target URL missing");
+  if (!commentText) throw new Error("Comment text missing");
+
+  try {
+    // Navigate to video
+    console.log(`🔴 Navigating to: ${targetUrl}`);
+    await page.goto(targetUrl, {
+      waitUntil: "networkidle",
+      timeout: 60000,
+    });
+
+    console.log("⏳ YouTube video loaded, waiting...");
+    await page.waitForTimeout(5000);
+
+    // Check if it's a Short
+    const isShort = targetUrl.includes("/shorts/");
+    console.log(`📱 Video type: ${isShort ? "Short" : "Regular video"}`);
+
+    if (isShort) {
+      // For Shorts - click comment button first
+      console.log("🔍 Looking for comment button on Short...");
+
+      const commentButtonFound = await page.evaluate(() => {
+        const buttons = Array.from(document.querySelectorAll("button"));
+
+        for (const btn of buttons) {
+          const ariaLabel = btn.getAttribute("aria-label") || "";
+
+          // Find comment button (has comment count)
+          if (ariaLabel.toLowerCase().includes("comment")) {
+            console.log("Found comment button:", ariaLabel);
+            btn.setAttribute("data-yt-comment-icon", "true");
+            return true;
+          }
+        }
+
+        return false;
+      });
+
+      if (!commentButtonFound) {
+        throw new Error("Comment button not found on Short");
+      }
+
+      // Click comment button to open comment section
+      console.log("🖱️ Clicking comment button...");
+      await page.evaluate(() => {
+        const btn = document.querySelector('[data-yt-comment-icon="true"]');
+        if (btn) btn.click();
+      });
+
+      console.log("⏳ Waiting for comment panel to open...");
+      await page.waitForTimeout(4000);
+    } else {
+      // For regular videos - scroll to comment section
+      console.log("📜 Scrolling to comment section...");
+      await page.evaluate(() => {
+        window.scrollBy(0, 600);
+      });
+      await page.waitForTimeout(3000);
+    }
+
+    // Find comment box
+    console.log("🔍 Looking for comment box...");
+
+    const commentBoxFound = await page.evaluate(() => {
+      // Wait a bit for elements to settle
+      const boxes = Array.from(
+        document.querySelectorAll(
+          'div[contenteditable="true"], div[contenteditable="plaintext-only"]'
+        )
+      );
+
+      console.log(`Found ${boxes.length} editable boxes`);
+
+      for (const box of boxes) {
+        const id = box.getAttribute("id") || "";
+        const ariaLabel = box.getAttribute("aria-label") || "";
+        const placeholder = box.getAttribute("aria-placeholder") || "";
+        const dataPlaceholder = box.getAttribute("data-placeholder") || "";
+
+        console.log("Checking box:", {
+          id,
+          ariaLabel,
+          placeholder,
+          dataPlaceholder,
+        });
+
+        // YouTube comment box - check all possible attributes
+        if (
+          id.includes("simplebox") ||
+          id.includes("contenteditable-root") ||
+          ariaLabel.toLowerCase().includes("comment") ||
+          placeholder.toLowerCase().includes("comment") ||
+          dataPlaceholder.toLowerCase().includes("comment")
+        ) {
+          // Make sure it's visible
+          const rect = box.getBoundingClientRect();
+          if (rect.width > 0 && rect.height > 0) {
+            console.log("Found visible comment box!");
+            box.setAttribute("data-yt-comment-box", "true");
+            box.scrollIntoView({ behavior: "smooth", block: "center" });
+            return true;
+          }
+        }
+      }
+
+      return false;
+    });
+
+    if (!commentBoxFound) {
+      throw new Error("Comment box not found");
+    }
+
+    console.log("✅ Found comment box");
+    await page.waitForTimeout(1500);
+
+    // Focus and type comment
+    console.log("📝 Clicking comment box to focus...");
+
+    await page.evaluate(() => {
+      const box = document.querySelector('[data-yt-comment-box="true"]');
+      if (box) {
+        box.click();
+        box.focus();
+      }
+    });
+
+    await page.waitForTimeout(1000);
+
+    // Type comment
+    console.log(`⌨️ Typing comment: "${commentText}"`);
+
+    const commentBox = page.locator('[data-yt-comment-box="true"]').first();
+    await commentBox.click();
+    await page.waitForTimeout(500);
+    await commentBox.type(commentText, { delay: 50 });
+
+    console.log("✅ Comment typed");
+    await page.waitForTimeout(2000);
+
+    // Find and click Comment button
+    console.log("🔍 Looking for Comment submit button...");
+
+    const commentBtnFound = await page.evaluate(() => {
+      const buttons = Array.from(document.querySelectorAll("button"));
+
+      for (const btn of buttons) {
+        const ariaLabel = btn.getAttribute("aria-label") || "";
+        const id = btn.getAttribute("id") || "";
+        const text = btn.textContent?.trim() || "";
+
+        console.log("Checking button:", { id, ariaLabel, text });
+
+        // YouTube comment submit button
+        if (
+          id.includes("submit-button") ||
+          (text === "Comment" && ariaLabel.toLowerCase().includes("comment"))
+        ) {
+          const rect = btn.getBoundingClientRect();
+          if (rect.width > 0 && rect.height > 0) {
+            console.log("Found Comment submit button");
+            btn.setAttribute("data-yt-comment-btn", "true");
+            return true;
+          }
+        }
+      }
+
+      return false;
+    });
+
+    if (!commentBtnFound) {
+      throw new Error("Comment submit button not found");
+    }
+
+    console.log("✅ Found Comment button, clicking...");
+    await page.waitForTimeout(500);
+
+    // Click Comment button
+    let clickSuccess = false;
+
+    try {
+      const commentBtn = page.locator('[data-yt-comment-btn="true"]').first();
+      await commentBtn.click({ timeout: 5000 });
+      clickSuccess = true;
+      console.log("✅ Clicked Comment button (locator)");
+    } catch (e) {
+      console.log("⚠️ Locator click failed, trying JS...");
+    }
+
+    if (!clickSuccess) {
+      try {
+        await page.evaluate(() => {
+          const btn = document.querySelector('[data-yt-comment-btn="true"]');
+          if (btn) btn.click();
+        });
+        clickSuccess = true;
+        console.log("✅ Clicked Comment button (JavaScript)");
+      } catch (e) {
+        console.log("⚠️ JS click failed");
+      }
+    }
+
+    if (!clickSuccess) {
+      throw new Error("Failed to click Comment button");
+    }
+
+    console.log("⏳ Waiting for comment to post...");
+    await page.waitForTimeout(4000);
+
+    // Verify comment was posted
+    const verified = await page.evaluate((text) => {
+      const bodyText = document.body.innerText;
+      return bodyText.includes(text);
+    }, commentText);
+
+    console.log("✅ YouTube comment posted successfully!");
+
+    return {
+      success: true,
+      message: "YouTube comment posted successfully",
+      verified: verified,
+      video_url: targetUrl,
+      comment: commentText,
+    };
+  } catch (error) {
+    console.error("❌ YouTube comment failed:", error.message);
+    return {
+      success: false,
+      message: error.message,
+      video_url: targetUrl,
+    };
+  }
+}
+
+// Update commentOnPost to include YouTube
 async function commentOnPost(page, platform, targetUrl, commentText) {
   try {
     if (platform === "tiktok") {
@@ -4773,6 +5240,9 @@ async function commentOnPost(page, platform, targetUrl, commentText) {
     if (platform === "facebook") {
       return await facebookComment(page, targetUrl, commentText);
     }
+    if (platform === "youtube") {
+      return await youtubeComment(page, targetUrl, commentText);
+    }
 
     return {
       success: false,
@@ -4780,23 +5250,12 @@ async function commentOnPost(page, platform, targetUrl, commentText) {
     };
   } catch (error) {
     console.error("❌ Comment failed:", error.message);
-
-    try {
-      await page.screenshot({
-        path: `${platform}-comment-error-${Date.now()}.png`,
-        fullPage: true,
-      });
-    } catch (e) {
-      // Ignore screenshot errors
-    }
-
     return {
       success: false,
       message: error.message,
     };
   }
 }
-
 // ==========================================
 // FOLLOW USER FUNCTION
 // ==========================================
@@ -5682,16 +6141,16 @@ async function youtubeFollow(page, targetUrl) {
     // Simple and direct approach - find Subscribe button
     const subscribeButton = await page.evaluate(() => {
       const buttons = Array.from(document.querySelectorAll("button"));
-      
+
       for (const btn of buttons) {
         const text = btn.textContent?.trim() || "";
-        const ariaLabel = btn.getAttribute('aria-label') || "";
-        
+        const ariaLabel = btn.getAttribute("aria-label") || "";
+
         // Check if already subscribed
         if (text === "Subscribed" || ariaLabel.includes("Unsubscribe")) {
           return { found: true, alreadySubscribed: true };
         }
-        
+
         // Find Subscribe button
         if (text === "Subscribe" || ariaLabel.includes("Subscribe to")) {
           btn.setAttribute("data-yt-sub", "true");
@@ -5699,7 +6158,7 @@ async function youtubeFollow(page, targetUrl) {
           return { found: true, alreadySubscribed: false };
         }
       }
-      
+
       return { found: false, alreadySubscribed: false };
     });
 
@@ -5718,7 +6177,7 @@ async function youtubeFollow(page, targetUrl) {
 
     // Click the Subscribe button using JavaScript
     console.log("🖱️ Clicking Subscribe button...");
-    
+
     await page.evaluate(() => {
       const btn = document.querySelector('[data-yt-sub="true"]');
       if (btn) {
@@ -5732,7 +6191,7 @@ async function youtubeFollow(page, targetUrl) {
     // Verify subscription
     const isSubscribed = await page.evaluate(() => {
       const buttons = Array.from(document.querySelectorAll("button"));
-      return buttons.some(btn => {
+      return buttons.some((btn) => {
         const text = btn.textContent?.trim() || "";
         return text === "Subscribed";
       });
@@ -5755,7 +6214,6 @@ async function youtubeFollow(page, targetUrl) {
         channel_url: targetUrl,
       };
     }
-
   } catch (error) {
     console.error("❌ YouTube subscribe failed:", error.message);
     return {
@@ -6644,25 +7102,25 @@ async function youtubeUnfollow(page, targetUrl) {
     // Check subscription status
     const buttonStatus = await page.evaluate(() => {
       const buttons = Array.from(document.querySelectorAll("button"));
-      
+
       for (const btn of buttons) {
         const text = btn.textContent?.trim() || "";
-        const ariaLabel = btn.getAttribute('aria-label') || "";
-        
+        const ariaLabel = btn.getAttribute("aria-label") || "";
+
         // Check if subscribed
         if (text === "Subscribed" || ariaLabel.includes("Unsubscribe")) {
           btn.setAttribute("data-yt-unsub", "true");
           console.log("✅ Found Subscribed button");
           return { found: true, isSubscribed: true };
         }
-        
+
         // Check if not subscribed
         if (text === "Subscribe" || ariaLabel.includes("Subscribe to")) {
           console.log("ℹ️ Not subscribed to this channel");
           return { found: true, isSubscribed: false };
         }
       }
-      
+
       return { found: false, isSubscribed: false };
     });
 
@@ -6681,7 +7139,7 @@ async function youtubeUnfollow(page, targetUrl) {
 
     // Click Subscribed button to open menu
     console.log("🖱️ Clicking Subscribed button...");
-    
+
     await page.evaluate(() => {
       const btn = document.querySelector('[data-yt-unsub="true"]');
       if (btn) btn.click();
@@ -6691,20 +7149,24 @@ async function youtubeUnfollow(page, targetUrl) {
 
     // Find and click Unsubscribe in menu
     console.log("🔍 Looking for Unsubscribe option...");
-    
+
     const unsubscribeFound = await page.evaluate(() => {
-      const elements = Array.from(document.querySelectorAll('yt-formatted-string, tp-yt-paper-item, button, div'));
-      
+      const elements = Array.from(
+        document.querySelectorAll(
+          "yt-formatted-string, tp-yt-paper-item, button, div"
+        )
+      );
+
       for (const el of elements) {
         const text = el.textContent?.trim() || "";
-        
+
         if (text === "Unsubscribe") {
           el.setAttribute("data-yt-unsub-option", "true");
           console.log("✅ Found Unsubscribe option");
           return true;
         }
       }
-      
+
       return false;
     });
 
@@ -6714,7 +7176,7 @@ async function youtubeUnfollow(page, targetUrl) {
 
     // Click Unsubscribe
     console.log("🖱️ Clicking Unsubscribe...");
-    
+
     await page.evaluate(() => {
       const option = document.querySelector('[data-yt-unsub-option="true"]');
       if (option) option.click();
@@ -6724,21 +7186,21 @@ async function youtubeUnfollow(page, targetUrl) {
 
     // Confirm unsubscribe if dialog appears
     console.log("🔍 Looking for confirmation...");
-    
+
     const confirmClicked = await page.evaluate(() => {
-      const buttons = Array.from(document.querySelectorAll('button'));
-      
+      const buttons = Array.from(document.querySelectorAll("button"));
+
       for (const btn of buttons) {
         const text = btn.textContent?.trim() || "";
-        const ariaLabel = btn.getAttribute('aria-label') || "";
-        
+        const ariaLabel = btn.getAttribute("aria-label") || "";
+
         if (text === "Unsubscribe" || ariaLabel.includes("Unsubscribe")) {
           console.log("✅ Found confirmation button");
           btn.click();
           return true;
         }
       }
-      
+
       return false;
     });
 
@@ -6750,20 +7212,20 @@ async function youtubeUnfollow(page, targetUrl) {
 
     // Verify unsubscribe
     console.log("🔍 Verifying unsubscribe...");
-    
+
     const verified = await page.evaluate(() => {
       const buttons = Array.from(document.querySelectorAll("button"));
-      
+
       for (const btn of buttons) {
         const text = btn.textContent?.trim() || "";
-        const ariaLabel = btn.getAttribute('aria-label') || "";
-        
+        const ariaLabel = btn.getAttribute("aria-label") || "";
+
         if (text === "Subscribe" || ariaLabel.includes("Subscribe to")) {
           console.log("✅ Verified - button shows Subscribe");
           return true;
         }
       }
-      
+
       return false;
     });
 
@@ -6784,7 +7246,6 @@ async function youtubeUnfollow(page, targetUrl) {
         channel_url: targetUrl,
       };
     }
-
   } catch (error) {
     console.error("❌ YouTube unsubscribe failed:", error.message);
     return {
@@ -8115,12 +8576,19 @@ async function tiktokScrollBot(page, accountId, options = {}) {
 
       // Enter Email
       console.log("📧 Entering email...");
-      const emailSelectors = ['input[type="text"]', 'input[name="email"]', 'input[placeholder*="email" i]'];
+      const emailSelectors = [
+        'input[type="text"]',
+        'input[name="email"]',
+        'input[placeholder*="email" i]',
+      ];
       let emailEntered = false;
 
       for (const selector of emailSelectors) {
         try {
-          const input = await page.waitForSelector(selector, { timeout: 5000, state: "visible" });
+          const input = await page.waitForSelector(selector, {
+            timeout: 5000,
+            state: "visible",
+          });
           if (input) {
             await input.click();
             await page.waitForTimeout(500);
@@ -8140,12 +8608,18 @@ async function tiktokScrollBot(page, accountId, options = {}) {
 
       // Enter Password
       console.log("🔑 Entering password...");
-      const passwordSelectors = ['input[type="password"]', 'input[name="password"]'];
+      const passwordSelectors = [
+        'input[type="password"]',
+        'input[name="password"]',
+      ];
       let passwordEntered = false;
 
       for (const selector of passwordSelectors) {
         try {
-          const input = await page.waitForSelector(selector, { timeout: 5000, state: "visible" });
+          const input = await page.waitForSelector(selector, {
+            timeout: 5000,
+            state: "visible",
+          });
           if (input) {
             await input.click();
             await page.waitForTimeout(500);
@@ -8166,7 +8640,11 @@ async function tiktokScrollBot(page, accountId, options = {}) {
       // Click Login Button
       console.log("👆 Clicking login button...");
       await page.waitForTimeout(1000);
-      const loginSelectors = ['button[type="submit"]', 'button:has-text("Log in")', 'button[data-e2e="login-button"]'];
+      const loginSelectors = [
+        'button[type="submit"]',
+        'button:has-text("Log in")',
+        'button[data-e2e="login-button"]',
+      ];
       let loginClicked = false;
 
       for (const selector of loginSelectors) {
@@ -8191,9 +8669,14 @@ async function tiktokScrollBot(page, accountId, options = {}) {
       await page.waitForTimeout(8000);
 
       // Check for CAPTCHA
-      const captchaVisible = await page.locator('div:has-text("Verify")').isVisible({ timeout: 3000 }).catch(() => false);
+      const captchaVisible = await page
+        .locator('div:has-text("Verify")')
+        .isVisible({ timeout: 3000 })
+        .catch(() => false);
       if (captchaVisible) {
-        console.log("⚠️ CAPTCHA detected - waiting 60 seconds for manual solve...");
+        console.log(
+          "⚠️ CAPTCHA detected - waiting 60 seconds for manual solve..."
+        );
         console.log("🖐️ Please solve the CAPTCHA manually in the browser");
         await page.waitForTimeout(60000);
       }
@@ -8201,16 +8684,16 @@ async function tiktokScrollBot(page, accountId, options = {}) {
       // Wait for successful redirect
       console.log("⏳ Waiting for login to complete...");
       try {
-        await page.waitForURL('**/foryou**', { timeout: 15000 });
+        await page.waitForURL("**/foryou**", { timeout: 15000 });
         console.log("✅ Successfully redirected to TikTok home");
       } catch (e) {
         const currentUrl = page.url();
         console.log("⚠️ Current URL:", currentUrl);
-        
-        if (currentUrl.includes('/login')) {
+
+        if (currentUrl.includes("/login")) {
           throw new Error("Login failed - still on login page");
         }
-        
+
         console.log("✅ Login appears successful (not on login page)");
       }
 
@@ -8219,7 +8702,6 @@ async function tiktokScrollBot(page, accountId, options = {}) {
 
       console.log("✅ TikTok login completed successfully!");
       return true;
-
     } catch (error) {
       console.error("❌ TikTok login failed:", error.message);
       throw error;
@@ -8230,34 +8712,40 @@ async function tiktokScrollBot(page, accountId, options = {}) {
   async function isVideoAlreadyLiked(videoContainer) {
     try {
       return await videoContainer.evaluate((container) => {
-        const likeButton = container.querySelector('[data-e2e="like-icon"]') ||
-                          container.querySelector('[data-e2e="browse-like-icon"]') ||
-                          container.querySelector('button[aria-label*="like"]');
-        
+        const likeButton =
+          container.querySelector('[data-e2e="like-icon"]') ||
+          container.querySelector('[data-e2e="browse-like-icon"]') ||
+          container.querySelector('button[aria-label*="like"]');
+
         if (!likeButton) return false;
 
-        const isActive = likeButton.classList.contains('active') || likeButton.classList.contains('liked');
+        const isActive =
+          likeButton.classList.contains("active") ||
+          likeButton.classList.contains("liked");
         if (isActive) return true;
 
-        const svg = likeButton.querySelector('svg');
+        const svg = likeButton.querySelector("svg");
         if (svg) {
-          const path = svg.querySelector('path');
+          const path = svg.querySelector("path");
           if (path) {
-            const fill = path.getAttribute('fill');
+            const fill = path.getAttribute("fill");
             const style = window.getComputedStyle(path);
             const color = style.fill || style.color || fill;
-            
-            if (color && (color.includes('rgb(254, 44, 85)') || 
-                         color.includes('rgb(255, 43, 84)') ||
-                         color.includes('#FE2C55') ||
-                         color.includes('#ff2b54'))) {
+
+            if (
+              color &&
+              (color.includes("rgb(254, 44, 85)") ||
+                color.includes("rgb(255, 43, 84)") ||
+                color.includes("#FE2C55") ||
+                color.includes("#ff2b54"))
+            ) {
               return true;
             }
           }
         }
 
-        const ariaLabel = likeButton.getAttribute('aria-label');
-        if (ariaLabel && ariaLabel.toLowerCase().includes('unlike')) {
+        const ariaLabel = likeButton.getAttribute("aria-label");
+        if (ariaLabel && ariaLabel.toLowerCase().includes("unlike")) {
           return true;
         }
 
@@ -8272,22 +8760,26 @@ async function tiktokScrollBot(page, accountId, options = {}) {
   async function performLike(videoContainer) {
     try {
       const strategies = [
-        { name: 'data-e2e', selector: '[data-e2e="like-icon"]' },
-        { name: 'browse-like', selector: '[data-e2e="browse-like-icon"]' },
-        { name: 'aria-label', selector: 'button[aria-label*="like"]' }
+        { name: "data-e2e", selector: '[data-e2e="like-icon"]' },
+        { name: "browse-like", selector: '[data-e2e="browse-like-icon"]' },
+        { name: "aria-label", selector: 'button[aria-label*="like"]' },
       ];
 
       for (const strategy of strategies) {
         try {
           const likeButton = videoContainer.locator(strategy.selector).first();
-          
-          if (await likeButton.isVisible({ timeout: 2000 }).catch(() => false)) {
+
+          if (
+            await likeButton.isVisible({ timeout: 2000 }).catch(() => false)
+          ) {
             await likeButton.scrollIntoViewIfNeeded({ timeout: 1000 });
             await page.waitForTimeout(300 + Math.floor(Math.random() * 200));
             await likeButton.click({ timeout: 2000 });
 
             activeScrollBots[accountId].stats.likes++;
-            console.log(`❤️ Liked via ${strategy.name}! (Total: ${activeScrollBots[accountId].stats.likes})`);
+            console.log(
+              `❤️ Liked via ${strategy.name}! (Total: ${activeScrollBots[accountId].stats.likes})`
+            );
             await page.waitForTimeout(1000 + Math.floor(Math.random() * 1500));
             return true;
           }
@@ -8307,7 +8799,9 @@ async function tiktokScrollBot(page, accountId, options = {}) {
   // Helper function to perform comment action
   async function performComment(videoContainer) {
     try {
-      const commentButton = videoContainer.locator('[data-e2e="comment-icon"]').first();
+      const commentButton = videoContainer
+        .locator('[data-e2e="comment-icon"]')
+        .first();
 
       if (await commentButton.isVisible({ timeout: 2000 }).catch(() => false)) {
         await commentButton.scrollIntoViewIfNeeded({ timeout: 1000 });
@@ -8319,7 +8813,7 @@ async function tiktokScrollBot(page, accountId, options = {}) {
 
         if (await commentBox.isVisible({ timeout: 3000 }).catch(() => false)) {
           const comment = comments[Math.floor(Math.random() * comments.length)];
-          
+
           await commentBox.click({ timeout: 2000 });
           await page.waitForTimeout(500);
           await commentBox.pressSequentially(comment, { delay: 100 });
@@ -8327,11 +8821,15 @@ async function tiktokScrollBot(page, accountId, options = {}) {
 
           const postButton = page.locator('[data-e2e="comment-post"]').first();
 
-          if (await postButton.isVisible({ timeout: 2000 }).catch(() => false)) {
+          if (
+            await postButton.isVisible({ timeout: 2000 }).catch(() => false)
+          ) {
             await postButton.click({ timeout: 2000 });
-            
+
             activeScrollBots[accountId].stats.comments++;
-            console.log(`💬 Commented: "${comment}" (Total: ${activeScrollBots[accountId].stats.comments})`);
+            console.log(
+              `💬 Commented: "${comment}" (Total: ${activeScrollBots[accountId].stats.comments})`
+            );
             await page.waitForTimeout(2000 + Math.floor(Math.random() * 2000));
 
             await page.keyboard.press("Escape");
@@ -8353,7 +8851,9 @@ async function tiktokScrollBot(page, accountId, options = {}) {
   // Helper function to perform share action
   async function performShare(videoContainer) {
     try {
-      const shareButton = videoContainer.locator('[data-e2e="share-icon"]').first();
+      const shareButton = videoContainer
+        .locator('[data-e2e="share-icon"]')
+        .first();
 
       if (await shareButton.isVisible({ timeout: 2000 }).catch(() => false)) {
         await shareButton.scrollIntoViewIfNeeded({ timeout: 1000 });
@@ -8361,7 +8861,9 @@ async function tiktokScrollBot(page, accountId, options = {}) {
         await shareButton.click({ timeout: 2000 });
 
         activeScrollBots[accountId].stats.shares++;
-        console.log(`🔗 Shared! (Total: ${activeScrollBots[accountId].stats.shares})`);
+        console.log(
+          `🔗 Shared! (Total: ${activeScrollBots[accountId].stats.shares})`
+        );
         await page.waitForTimeout(1000 + Math.floor(Math.random() * 1500));
 
         await page.keyboard.press("Escape");
@@ -8378,7 +8880,7 @@ async function tiktokScrollBot(page, accountId, options = {}) {
   try {
     // ⭐ STEP 1: Check if logged in, if not, perform login
     console.log("🔍 Checking login status...");
-    
+
     await page.goto("https://www.tiktok.com/foryou", {
       waitUntil: "domcontentloaded",
       timeout: 30000,
@@ -8397,8 +8899,8 @@ async function tiktokScrollBot(page, accountId, options = {}) {
     // ⭐ STEP 2: Navigate to For You page (if not already there)
     console.log("🏠 Ensuring we're on the For You page...");
     const currentUrl = page.url();
-    
-    if (!currentUrl.includes('/foryou')) {
+
+    if (!currentUrl.includes("/foryou")) {
       await page.goto("https://www.tiktok.com/foryou", {
         waitUntil: "domcontentloaded",
         timeout: 30000,
@@ -8422,14 +8924,20 @@ async function tiktokScrollBot(page, accountId, options = {}) {
 
       activeScrollBots[accountId].stats.scrolls = scrollIteration;
 
-      let videoContainers = await page.locator('[data-e2e="recommend-list-item-container"]').all();
+      let videoContainers = await page
+        .locator('[data-e2e="recommend-list-item-container"]')
+        .all();
 
       if (videoContainers.length === 0) {
-        videoContainers = await page.locator('div[class*="DivVideoContainer"]').all();
+        videoContainers = await page
+          .locator('div[class*="DivVideoContainer"]')
+          .all();
       }
 
       if (videoContainers.length === 0) {
-        videoContainers = await page.locator('div[class*="DivItemContainer"]').all();
+        videoContainers = await page
+          .locator('div[class*="DivItemContainer"]')
+          .all();
       }
 
       if (videoContainers.length === 0) {
@@ -8455,7 +8963,7 @@ async function tiktokScrollBot(page, accountId, options = {}) {
         activeScrollBots[accountId].stats.attempts++;
 
         const alreadyLiked = await isVideoAlreadyLiked(videoContainer);
-        
+
         // ❤️ LIKE
         if (Math.random() * 100 < likeChance) {
           if (alreadyLiked) {
@@ -8488,7 +8996,9 @@ async function tiktokScrollBot(page, accountId, options = {}) {
       // Random pause every 5-8 scrolls
       if (scrollIteration % (5 + Math.floor(Math.random() * 4)) === 0) {
         const pauseDuration = 5000 + Math.floor(Math.random() * 5000);
-        console.log(`⏸️ Taking a ${Math.floor(pauseDuration / 1000)}s break...`);
+        console.log(
+          `⏸️ Taking a ${Math.floor(pauseDuration / 1000)}s break...`
+        );
         await page.waitForTimeout(pauseDuration);
       }
 
@@ -8502,7 +9012,9 @@ async function tiktokScrollBot(page, accountId, options = {}) {
     const duration = Math.floor((Date.now() - finalStats.startTime) / 1000);
 
     console.log("\n✅ TikTok scroll bot stopped");
-    console.log(`📊 Stats: Scrolls: ${finalStats.scrolls} | Likes: ${finalStats.likes} | Comments: ${finalStats.comments} | Shares: ${finalStats.shares}`);
+    console.log(
+      `📊 Stats: Scrolls: ${finalStats.scrolls} | Likes: ${finalStats.likes} | Comments: ${finalStats.comments} | Shares: ${finalStats.shares}`
+    );
     console.log(`⏱️ Duration: ${duration}s`);
 
     delete activeScrollBots[accountId];
@@ -8542,20 +9054,342 @@ async function tiktokScrollBot(page, accountId, options = {}) {
 //   const cookie = cookies.find((c) => c.name === tokenName);
 //   return cookie ? cookie.value : null;
 // }
+async function youtubeScrollBot(page, accountId, options = {}) {
+  console.log("🔴 YouTube Shorts UNLIMITED scroll bot started...");
+
+  const {
+    likeChance = 35,
+    commentChance = 10,
+    comments = [
+      "Amazing! 🔥",
+      "Love this! ❤️",
+      "Great content! 👍",
+      "So good! ✨",
+      "Wow! 😍",
+      "Perfect! 💯",
+      "This is awesome! 🚀",
+      "Keep it up! 💪",
+    ],
+  } = options;
+
+  // Initialize bot state
+  activeScrollBots[accountId] = {
+    shouldStop: false,
+    platform: "youtube",
+    stats: {
+      scrolls: 0,
+      likes: 0,
+      comments: 0,
+      attempts: 0,
+      errors: [],
+      startTime: Date.now(),
+    },
+  };
+
+  // Helper function to check if video is already liked
+  async function isVideoAlreadyLiked() {
+    try {
+      return await page.evaluate(() => {
+        const buttons = Array.from(document.querySelectorAll("button"));
+
+        for (const btn of buttons) {
+          const ariaLabel = btn.getAttribute("aria-label") || "";
+          const isPressed = btn.getAttribute("aria-pressed") === "true";
+
+          if (
+            ariaLabel.toLowerCase().includes("like this video") &&
+            isPressed
+          ) {
+            return true;
+          }
+        }
+
+        return false;
+      });
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // Helper function to perform like
+  async function performLike() {
+    try {
+      const liked = await page.evaluate(() => {
+        const buttons = Array.from(document.querySelectorAll("button"));
+
+        for (const btn of buttons) {
+          const ariaLabel = btn.getAttribute("aria-label") || "";
+          const isPressed = btn.getAttribute("aria-pressed") === "true";
+
+          // Find like button and check if not already liked
+          if (
+            ariaLabel.toLowerCase().includes("like this video") &&
+            !isPressed
+          ) {
+            btn.click();
+            console.log("✅ Like button clicked");
+            return true;
+          }
+        }
+
+        return false;
+      });
+
+      if (liked) {
+        activeScrollBots[accountId].stats.likes++;
+        console.log(
+          `❤️ Liked! (Total: ${activeScrollBots[accountId].stats.likes})`
+        );
+        await page.waitForTimeout(1000 + Math.floor(Math.random() * 1500));
+        return true;
+      }
+
+      return false;
+    } catch (e) {
+      console.log("⚠️ Like failed:", e.message);
+      return false;
+    }
+  }
+
+  // Helper function to perform comment
+  async function performComment() {
+    try {
+      // Click comment button to open comment section
+      const commentOpened = await page.evaluate(() => {
+        const buttons = Array.from(document.querySelectorAll("button"));
+
+        for (const btn of buttons) {
+          const ariaLabel = btn.getAttribute("aria-label") || "";
+
+          if (ariaLabel.toLowerCase().includes("comment")) {
+            btn.click();
+            console.log("✅ Comment button clicked");
+            return true;
+          }
+        }
+
+        return false;
+      });
+
+      if (!commentOpened) {
+        console.log("⚠️ Comment button not found");
+        return false;
+      }
+
+      await page.waitForTimeout(2000);
+
+      // Find comment box
+      const commentBoxFound = await page.evaluate(() => {
+        const boxes = Array.from(
+          document.querySelectorAll(
+            'div[contenteditable="true"], div[contenteditable="plaintext-only"]'
+          )
+        );
+
+        for (const box of boxes) {
+          const rect = box.getBoundingClientRect();
+          if (rect.width > 0 && rect.height > 0) {
+            box.setAttribute("data-yt-comment-temp", "true");
+            box.scrollIntoView({ behavior: "smooth", block: "center" });
+            return true;
+          }
+        }
+
+        return false;
+      });
+
+      if (!commentBoxFound) {
+        console.log("⚠️ Comment box not found");
+        return false;
+      }
+
+      await page.waitForTimeout(1000);
+
+      // Type comment
+      const comment = comments[Math.floor(Math.random() * comments.length)];
+
+      await page.evaluate(() => {
+        const box = document.querySelector('[data-yt-comment-temp="true"]');
+        if (box) {
+          box.click();
+          box.focus();
+        }
+      });
+
+      await page.waitForTimeout(500);
+
+      const commentBox = page.locator('[data-yt-comment-temp="true"]').first();
+      await commentBox.click();
+      await page.waitForTimeout(300);
+      await commentBox.type(comment, { delay: 50 });
+
+      await page.waitForTimeout(1500);
+
+      // Click Comment submit button
+      const submitted = await page.evaluate(() => {
+        const buttons = Array.from(document.querySelectorAll("button"));
+
+        for (const btn of buttons) {
+          const text = btn.textContent?.trim() || "";
+
+          if (text === "Comment") {
+            const rect = btn.getBoundingClientRect();
+            if (rect.width > 0 && rect.height > 0) {
+              btn.click();
+              console.log("✅ Comment submitted");
+              return true;
+            }
+          }
+        }
+
+        return false;
+      });
+
+      if (submitted) {
+        activeScrollBots[accountId].stats.comments++;
+        console.log(
+          `💬 Commented: "${comment}" (Total: ${activeScrollBots[accountId].stats.comments})`
+        );
+        await page.waitForTimeout(2000);
+
+        // Close comment panel
+        await page.keyboard.press("Escape");
+        await page.waitForTimeout(500);
+        return true;
+      }
+
+      return false;
+    } catch (e) {
+      console.log("⚠️ Comment failed:", e.message);
+      try {
+        await page.keyboard.press("Escape");
+      } catch {}
+      return false;
+    }
+  }
+
+  try {
+    // Navigate to YouTube Shorts
+    console.log("🏠 Navigating to YouTube Shorts...");
+    await page.goto("https://www.youtube.com/shorts", {
+      waitUntil: "networkidle",
+      timeout: 30000,
+    });
+
+    await page.waitForTimeout(5000);
+    console.log("✅ Ready to start scrolling!");
+
+    let scrollIteration = 0;
+    let consecutiveErrors = 0;
+    const MAX_CONSECUTIVE_ERRORS = 10;
+
+    // Start infinite scroll loop
+    while (!activeScrollBots[accountId]?.shouldStop) {
+      scrollIteration++;
+      console.log(`\n⬇️ Scroll iteration: ${scrollIteration}`);
+
+      // Scroll to next short (Arrow Down or swipe)
+      await page.keyboard.press("ArrowDown");
+      await page.waitForTimeout(3000 + Math.floor(Math.random() * 2000));
+
+      activeScrollBots[accountId].stats.scrolls = scrollIteration;
+
+      if (activeScrollBots[accountId]?.shouldStop) break;
+
+      try {
+        activeScrollBots[accountId].stats.attempts++;
+
+        // Check if already liked
+        const alreadyLiked = await isVideoAlreadyLiked();
+
+        // ❤️ LIKE
+        if (Math.random() * 100 < likeChance) {
+          if (alreadyLiked) {
+            console.log("❤️ Already liked, skipping...");
+          } else {
+            await performLike();
+          }
+          await page.waitForTimeout(500 + Math.floor(Math.random() * 1000));
+        }
+
+        if (activeScrollBots[accountId]?.shouldStop) break;
+
+        // 💬 COMMENT
+        if (Math.random() * 100 < commentChance) {
+          await performComment();
+        }
+
+        consecutiveErrors = 0;
+      } catch (err) {
+        console.log("⚠️ Interaction error:", err.message);
+        consecutiveErrors++;
+
+        if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+          console.log("❌ Too many errors, stopping");
+          break;
+        }
+      }
+
+      // Random pause every 5-8 scrolls
+      if (scrollIteration % (5 + Math.floor(Math.random() * 4)) === 0) {
+        const pauseDuration = 5000 + Math.floor(Math.random() * 5000);
+        console.log(
+          `⏸️ Taking a ${Math.floor(pauseDuration / 1000)}s break...`
+        );
+        await page.waitForTimeout(pauseDuration);
+      }
+
+      if (activeScrollBots[accountId]?.shouldStop) {
+        console.log("🛑 Stop signal received");
+        break;
+      }
+    }
+
+    const finalStats = activeScrollBots[accountId].stats;
+    const duration = Math.floor((Date.now() - finalStats.startTime) / 1000);
+
+    console.log("\n✅ YouTube Shorts scroll bot stopped");
+    console.log(
+      `📊 Stats: Scrolls: ${finalStats.scrolls} | Likes: ${finalStats.likes} | Comments: ${finalStats.comments}`
+    );
+    console.log(`⏱️ Duration: ${duration}s`);
+
+    delete activeScrollBots[accountId];
+
+    return {
+      success: true,
+      message: "YouTube Shorts scrolling stopped",
+      stats: { ...finalStats, duration: `${duration}s` },
+    };
+  } catch (error) {
+    console.error("❌ YouTube bot error:", error.message);
+
+    if (activeScrollBots[accountId]) {
+      activeScrollBots[accountId].stats.errors.push(error.message);
+    }
+
+    delete activeScrollBots[accountId];
+
+    return {
+      success: false,
+      message: error.message,
+    };
+  }
+}
 function extractAuthToken(cookies, platform) {
   if (!cookies || cookies.length === 0) return null;
 
   const tokenMap = {
-    instagram: ['sessionid', 'csrftoken'],
-    facebook: ['c_user', 'xs'],
-    twitter: ['auth_token', 'ct0'],
-    tiktok: ['sessionid', 'tt_webid', 'tt_webid_v2', 'sid_tt'], // TikTok tokens
-    linkedin: ['li_at', 'JSESSIONID'],
-    youtube: ['SAPISID', 'SSID'],
+    instagram: ["sessionid", "csrftoken"],
+    facebook: ["c_user", "xs"],
+    twitter: ["auth_token", "ct0"],
+    tiktok: ["sessionid", "tt_webid", "tt_webid_v2", "sid_tt"], // TikTok tokens
+    linkedin: ["li_at", "JSESSIONID"],
+    youtube: ["SAPISID", "SSID"],
   };
 
   const tokens = tokenMap[platform] || [];
-  
+
   for (const cookie of cookies) {
     if (tokens.includes(cookie.name)) {
       return cookie.value;
