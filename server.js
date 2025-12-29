@@ -582,30 +582,30 @@ app.post("/execute-task", async (req, res) => {
         });
       }
 
-// Add LinkedIn scrolling
-if (platform === "linkedin") {
-  const linkedinOptions = {
-    likeChance: task.likeChance || 35,
-    commentChance: task.commentChance || 10,
-    comments: task.comments || [
-      "Great insights! 👍",
-      "Thanks for sharing! 🙌",
-      "Very informative! 💡",
-      "Interesting perspective! 🤔",
-      "Well said! 💯",
-      "Absolutely agree! ✨",
-      "This is valuable! 🎯",
-      "Amazing post! 🔥",
-    ],
-  };
+      // Add LinkedIn scrolling
+      if (platform === "linkedin") {
+        const linkedinOptions = {
+          likeChance: task.likeChance || 35,
+          commentChance: task.commentChance || 10,
+          comments: task.comments || [
+            "Great insights! 👍",
+            "Thanks for sharing! 🙌",
+            "Very informative! 💡",
+            "Interesting perspective! 🤔",
+            "Well said! 💯",
+            "Absolutely agree! ✨",
+            "This is valuable! 🎯",
+            "Amazing post! 🔥",
+          ],
+        };
 
-  linkedinScrollBot(page, account.id, linkedinOptions);
-  return res.json({
-    success: true,
-    message: "LinkedIn Feed unlimited scrolling started",
-    info: "Bot will run until you call /stop-scroll",
-  });
-}
+        linkedinScrollBot(page, account.id, linkedinOptions);
+        return res.json({
+          success: true,
+          message: "LinkedIn Feed unlimited scrolling started",
+          info: "Bot will run until you call /stop-scroll",
+        });
+      }
 
       if (platform === "tiktok") {
         // ⭐ Pass email and password for TikTok auto-login
@@ -681,7 +681,7 @@ async function createPost(page, platform, task) {
     if (platform === "tiktok") {
       return await createTikTokPost(page, task);
     }
-    if(platform === "youtube"){
+    if (platform === "youtube") {
       return await createYouTubePost(page, task);
     }
 
@@ -697,9 +697,554 @@ async function createPost(page, platform, task) {
     };
   }
 }
+
+async function createLinkedInPost(page, postContent) {
+  console.log("\n" + "=".repeat(80));
+  console.log("💼 STARTING LINKEDIN POST CREATION");
+  console.log("=".repeat(80));
+  console.log("📋 Post Content:", JSON.stringify(postContent, null, 2));
+  console.log("=".repeat(80) + "\n");
+
+  try {
+    // ============================================
+    // STEP 1: NAVIGATE TO LINKEDIN
+    // ============================================
+    console.log("📍 STEP 1: Navigating to LinkedIn Feed...");
+    await page.goto("https://www.linkedin.com/feed/", {
+      waitUntil: "domcontentloaded",
+      timeout: 60000,
+    });
+    await page.waitForTimeout(3000);
+    console.log("✅ Page loaded\n");
+
+    // ============================================
+    // STEP 2: CLOSE POPUPS
+    // ============================================
+    console.log("📍 STEP 2: Closing popups...");
+    await page.click('button[aria-label="Dismiss"]').catch(() => {
+      console.log("   No popup to dismiss");
+    });
+    await page.waitForTimeout(1000);
+    console.log("✅ Popups closed\n");
+
+    // ============================================
+    // STEP 3: CLICK "START A POST"
+    // ============================================
+    console.log("📍 STEP 3: Opening post dialog...");
+    console.log("   🔍 Looking for 'Start a post' button...");
+    
+    const startPostSelectors = [
+      'button:has-text("Start a post")',
+      '.share-box-feed-entry__trigger',
+      'button[aria-label*="Start a post"]',
+    ];
+
+    let postDialogOpened = false;
+    for (const selector of startPostSelectors) {
+      try {
+        console.log(`   ⚡ Trying: ${selector}`);
+        await page.waitForSelector(selector, { state: "visible", timeout: 5000 });
+        await page.click(selector);
+        console.log(`   ✅ CLICKED: ${selector}`);
+        postDialogOpened = true;
+        break;
+      } catch (e) {
+        console.log(`   ❌ Failed: ${selector}`);
+      }
+    }
+
+    if (!postDialogOpened) {
+      throw new Error("Could not open post dialog");
+    }
+
+    await page.waitForTimeout(3000);
+    console.log("✅ Post dialog opened\n");
+
+    // ============================================
+    // STEP 4: ADD TEXT CONTENT
+    // ============================================
+    console.log("📍 STEP 4: Adding text content...");
+    const editor = '.ql-editor[contenteditable="true"]';
+    
+    console.log(`   🔍 Waiting for editor: ${editor}`);
+    await page.waitForSelector(editor, { state: "visible", timeout: 10000 });
+    console.log("   ✅ Editor found");
+    
+    const postText = (postContent.content || "") + "\n\n" + (postContent.hashtags || "");
+    console.log(`   📝 Text to add: "${postText}"`);
+    
+    await page.fill(editor, postText.trim());
+    console.log("   ✅ FILLED TEXT IN EDITOR");
+    await page.waitForTimeout(2000);
+    console.log("✅ Text added successfully\n");
+
+    // ============================================
+    // STEP 5: UPLOAD MEDIA (CRITICAL STEP!)
+    // ============================================
+    let mediaUploaded = false;
+    
+    if (postContent.media_urls) {
+      console.log("📍 STEP 5: UPLOADING MEDIA...");
+      console.log("=".repeat(80));
+      
+      // Build file paths
+      const possiblePaths = [
+        path.join('C:', 'wamp64', 'www', 'social-automation', 'public', postContent.media_urls),
+        path.join(process.cwd(), 'public', postContent.media_urls),
+        path.join(process.cwd(), postContent.media_urls),
+        path.join(__dirname, '..', 'public', postContent.media_urls),
+      ];
+
+      let absoluteMediaPath = null;
+      console.log("   🔍 Checking file paths:");
+      for (const testPath of possiblePaths) {
+        console.log(`      - ${testPath}`);
+        if (fs.existsSync(testPath)) {
+          absoluteMediaPath = testPath;
+          console.log(`      ✅ FILE FOUND!`);
+          break;
+        } else {
+          console.log(`      ❌ Not found`);
+        }
+      }
+
+      if (!absoluteMediaPath) {
+        console.log("   ❌ MEDIA FILE NOT FOUND IN ANY PATH");
+        console.log("   ⚠️ Continuing without media\n");
+      } else {
+        console.log(`\n   📁 Using file: ${absoluteMediaPath}\n`);
+        
+        // CLICK PHOTO BUTTON
+        console.log("   🔍 Step 5a: Looking for 'Add a photo' button...");
+        await page.waitForTimeout(2000);
+        
+        let photoButtonClicked = false;
+        
+        // Method 1: Direct selector
+        try {
+          console.log("   ⚡ Method 1: Trying button[aria-label='Add a photo']");
+          const photoBtn = page.locator('button[aria-label="Add a photo"]').first();
+          await photoBtn.waitFor({ state: "visible", timeout: 5000 });
+          await photoBtn.click();
+          console.log("   ✅ CLICKED PHOTO BUTTON (Method 1)");
+          photoButtonClicked = true;
+        } catch (e) {
+          console.log("   ❌ Method 1 failed:", e.message);
+        }
+
+        // Method 2: Search all buttons
+        if (!photoButtonClicked) {
+          console.log("\n   ⚡ Method 2: Searching all buttons for 'photo' in aria-label...");
+          try {
+            const allButtons = await page.$$('button');
+            console.log(`   📊 Found ${allButtons.length} buttons on page`);
+            
+            for (let i = 0; i < allButtons.length; i++) {
+              const btn = allButtons[i];
+              const ariaLabel = await btn.getAttribute('aria-label').catch(() => null);
+              const isVisible = await btn.isVisible().catch(() => false);
+              
+              if (ariaLabel) {
+                console.log(`      Button ${i}: "${ariaLabel}" (visible: ${isVisible})`);
+              }
+              
+              if (isVisible && ariaLabel && 
+                  (ariaLabel.toLowerCase().includes('photo') || 
+                   ariaLabel.toLowerCase().includes('image') ||
+                   ariaLabel.toLowerCase().includes('media'))) {
+                console.log(`   ✅ FOUND TARGET BUTTON: "${ariaLabel}"`);
+                await btn.click();
+                console.log(`   ✅ CLICKED BUTTON: "${ariaLabel}"`);
+                photoButtonClicked = true;
+                break;
+              }
+            }
+          } catch (e) {
+            console.log("   ❌ Method 2 failed:", e.message);
+          }
+        }
+
+        if (!photoButtonClicked) {
+          throw new Error("❌ COULD NOT FIND PHOTO BUTTON - Media upload aborted");
+        }
+
+        // WAIT FOR FILE INPUT
+        console.log("\n   🔍 Step 5b: Waiting for file input...");
+        await page.waitForTimeout(2000);
+
+        // UPLOAD FILE
+        console.log("   📎 Step 5c: Setting file input...");
+        try {
+          const fileInputs = await page.$$('input[type="file"]');
+          console.log(`   📊 Found ${fileInputs.length} file inputs`);
+          
+          if (fileInputs.length === 0) {
+            throw new Error("No file input found after clicking photo button");
+          }
+
+          let fileSet = false;
+          for (let i = 0; i < fileInputs.length; i++) {
+            try {
+              console.log(`   ⚡ Trying file input ${i + 1}...`);
+              await fileInputs[i].setInputFiles(absoluteMediaPath);
+              console.log(`   ✅ FILE UPLOADED using input ${i + 1}`);
+              fileSet = true;
+              break;
+            } catch (e) {
+              console.log(`   ❌ File input ${i + 1} failed:`, e.message);
+            }
+          }
+
+          if (!fileSet) {
+            throw new Error("Could not set file on any input");
+          }
+
+        } catch (e) {
+          console.log("   ❌ File upload error:", e.message);
+          throw e;
+        }
+
+        // WAIT FOR PROCESSING
+        console.log("\n   ⏳ Step 5d: Waiting for media to process (15 seconds)...");
+        await page.waitForTimeout(15000);
+
+        // ============================================
+        // STEP 5e: CLICK "NEXT" IN MEDIA EDITOR
+        // ============================================
+        console.log("\n   🔍 Step 5e: Looking for Next button in media editor...");
+        
+        const nextButtonSelectors = [
+          'button.share-media-editor__action-button--primary',
+          'button.artdeco-button--primary:has-text("Next")',
+          'button[aria-label*="Next"]',
+          'button:has-text("Next")',
+          '.share-media-editor button:has-text("Next")',
+        ];
+
+        let nextClicked = false;
+        for (const selector of nextButtonSelectors) {
+          try {
+            console.log(`      ⚡ Trying: ${selector}`);
+            const nextBtn = page.locator(selector).first();
+            await nextBtn.waitFor({ state: "visible", timeout: 5000 });
+            
+            // Wait for button to be enabled
+            let waitCount = 0;
+            while (waitCount < 10) {
+              const isDisabled = await nextBtn.isDisabled().catch(() => true);
+              if (!isDisabled) break;
+              await page.waitForTimeout(1000);
+              waitCount++;
+            }
+            
+            await nextBtn.click();
+            console.log(`      ✅ CLICKED NEXT BUTTON: ${selector}`);
+            nextClicked = true;
+            break;
+          } catch (e) {
+            console.log(`      ❌ Failed: ${e.message}`);
+          }
+        }
+
+        if (!nextClicked) {
+          console.log("      ⚠️ Next button not found, trying fallback...");
+          
+          // Fallback: Search all buttons
+          const allButtons = await page.$$('button');
+          for (const btn of allButtons) {
+            const text = await btn.textContent().catch(() => '');
+            const isVisible = await btn.isVisible().catch(() => false);
+            
+            if (isVisible && text.trim().toLowerCase() === 'next') {
+              console.log(`      ✅ Found Next via fallback`);
+              await btn.click();
+              nextClicked = true;
+              break;
+            }
+          }
+        }
+
+        if (!nextClicked) {
+          console.log("      ⚠️ Could not find Next button - may already be on final screen");
+        }
+
+        await page.waitForTimeout(3000);
+
+        // ============================================
+        // STEP 5f: CLICK "DONE" IF EDITING SCREEN APPEARS
+        // ============================================
+        console.log("\n   🔍 Step 5f: Checking for Done/Apply button...");
+        
+        const doneButtonSelectors = [
+          'button:has-text("Done")',
+          'button:has-text("Apply")',
+          'button.artdeco-button--primary:has-text("Done")',
+          'button[aria-label*="Done"]',
+        ];
+
+        let doneClicked = false;
+        for (const selector of doneButtonSelectors) {
+          try {
+            const isVisible = await page.isVisible(selector, { timeout: 2000 });
+            if (isVisible) {
+              console.log(`      ⚡ Clicking: ${selector}`);
+              await page.click(selector);
+              console.log(`      ✅ CLICKED DONE/APPLY BUTTON`);
+              doneClicked = true;
+              break;
+            }
+          } catch (e) {
+            continue;
+          }
+        }
+
+        if (!doneClicked) {
+          console.log("      ℹ️ No Done/Apply button found - proceeding");
+        }
+
+        await page.waitForTimeout(3000);
+        mediaUploaded = true;
+
+        console.log("=".repeat(80));
+        console.log("✅ MEDIA UPLOAD AND EDITOR NAVIGATION COMPLETED\n");
+      }
+    } else {
+      console.log("📍 STEP 5: No media to upload\n");
+    }
+
+    // ============================================
+    // STEP 6: POST SETTINGS (BRAND PARTNERSHIP)
+    // ============================================
+    console.log("📍 STEP 6: Configuring post settings...");
+    console.log("=".repeat(80));
+    
+    // Wait for main post composition screen to be ready
+    await page.waitForTimeout(2000);
+    
+    console.log("   🔍 Looking for settings button...");
+    const settingsSelectors = [
+      'button[aria-label*="settings"]',
+      'button[aria-label*="Post settings"]',
+      'button[aria-label*="Open settings"]',
+      '.share-creation-state__settings-button',
+    ];
+
+    let settingsOpened = false;
+    for (const selector of settingsSelectors) {
+      try {
+        console.log(`   ⚡ Trying: ${selector}`);
+        await page.waitForSelector(selector, { state: "visible", timeout: 3000 });
+        await page.click(selector);
+        console.log(`   ✅ CLICKED SETTINGS BUTTON: ${selector}`);
+        settingsOpened = true;
+        break;
+      } catch (e) {
+        console.log(`   ❌ Failed: ${selector}`);
+      }
+    }
+
+    if (!settingsOpened) {
+      console.log("   ⚠️ Settings button not found - skipping brand partnership");
+      console.log("=".repeat(80) + "\n");
+    } else {
+      await page.waitForTimeout(2000);
+      console.log("   ✅ Settings dialog opened\n");
+
+      // ENABLE BRAND PARTNERSHIP
+      console.log("   🤝 Looking for Brand Partnership toggle...");
+      try {
+        await page.waitForSelector('div[role="dialog"]', { state: "visible", timeout: 5000 });
+
+        const toggleButtons = await page.$$('button.artdeco-toggle__button');
+        console.log(`   📊 Found ${toggleButtons.length} toggle buttons`);
+
+        let brandToggled = false;
+        for (let i = 0; i < toggleButtons.length; i++) {
+          const toggle = toggleButtons[i];
+          const ariaLabel = await toggle.getAttribute('aria-label').catch(() => '');
+          const ariaChecked = await toggle.getAttribute('aria-checked').catch(() => 'unknown');
+          
+          console.log(`      Toggle ${i + 1}: "${ariaLabel}" (checked: ${ariaChecked})`);
+
+          if (ariaLabel.toLowerCase().includes('brand')) {
+            console.log(`      ✅ FOUND BRAND PARTNERSHIP TOGGLE`);
+            
+            if (ariaChecked === 'false') {
+              console.log(`      ⚡ Clicking to enable...`);
+              await toggle.click();
+              await page.waitForTimeout(1000);
+              
+              const newState = await toggle.getAttribute('aria-checked');
+              console.log(`      ✅ BRAND PARTNERSHIP ENABLED (new state: ${newState})`);
+              brandToggled = true;
+            } else if (ariaChecked === 'true') {
+              console.log(`      ℹ️ Already enabled`);
+              brandToggled = true;
+            }
+            break;
+          }
+        }
+
+        if (!brandToggled) {
+          console.log("   ⚠️ Brand Partnership toggle not found");
+        }
+
+      } catch (e) {
+        console.log("   ⚠️ Error toggling brand partnership:", e.message);
+      }
+
+      // CLOSE SETTINGS
+      console.log("\n   🔍 Closing settings dialog...");
+      await page.waitForTimeout(1500);
+      
+      try {
+        console.log("   ⚡ Clicking 'Done' button...");
+        await page.click('button:has-text("Done")', { timeout: 5000 });
+        console.log("   ✅ CLICKED DONE BUTTON");
+      } catch (e) {
+        console.log("   ❌ Done button not found, pressing Escape");
+        await page.keyboard.press('Escape');
+      }
+
+      await page.waitForTimeout(2000);
+      console.log("=".repeat(80));
+      console.log("✅ SETTINGS CONFIGURED\n");
+    }
+
+    // ============================================
+    // STEP 7: PUBLISH POST
+    // ============================================
+    console.log("📍 STEP 7: Publishing post...");
+    console.log("=".repeat(80));
+
+    console.log("   🔍 Looking for Post button...");
+    
+    // Multiple selectors for the final Post button
+    const postButtonSelectors = [
+      'button.share-actions__primary-action',
+      'button[aria-label*="Post"]',
+      'button.artdeco-button--primary:has-text("Post")',
+      '.share-creation-state button:has-text("Post")',
+    ];
+    
+    let postButtonFound = false;
+    let postButtonSelector = null;
+
+    for (const selector of postButtonSelectors) {
+      try {
+        const isVisible = await page.isVisible(selector, { timeout: 3000 });
+        if (isVisible) {
+          console.log(`   ✅ Post button found: ${selector}`);
+          postButtonSelector = selector;
+          postButtonFound = true;
+          break;
+        }
+      } catch (e) {
+        console.log(`   ❌ Not found: ${selector}`);
+      }
+    }
+
+    if (!postButtonFound) {
+      // Fallback: Search all buttons
+      console.log("   🔍 Fallback: Searching all buttons...");
+      const allButtons = await page.$$('button');
+      
+      for (const btn of allButtons) {
+        const text = await btn.textContent().catch(() => '');
+        const ariaLabel = await btn.getAttribute('aria-label').catch(() => '');
+        const isVisible = await btn.isVisible().catch(() => false);
+        
+        if (isVisible && (text.trim() === 'Post' || ariaLabel.includes('Post'))) {
+          console.log(`   ✅ Found Post button via fallback: "${text || ariaLabel}"`);
+          await btn.click();
+          postButtonFound = true;
+          break;
+        }
+      }
+    } else {
+      // Check if disabled and wait
+      console.log("   🔍 Checking if Post button is enabled...");
+      let waitAttempts = 0;
+      while (waitAttempts < 25) {
+        const postBtn = await page.$(postButtonSelector);
+        const isDisabled = await postBtn.getAttribute('disabled');
+        
+        if (!isDisabled) {
+          console.log("   ✅ Post button is ENABLED");
+          break;
+        }
+        
+        console.log(`   ⏳ Post button disabled, waiting... (${waitAttempts + 1}/25)`);
+        await page.waitForTimeout(2000);
+        waitAttempts++;
+      }
+
+      console.log("   ⚡ Clicking Post button...");
+      await page.click(postButtonSelector);
+      console.log("   ✅ CLICKED POST BUTTON");
+    }
+
+    if (!postButtonFound) {
+      throw new Error("Could not find Post button after all attempts");
+    }
+
+    // Wait for post to publish
+    console.log("   ⏳ Waiting for post to publish...");
+    await page.waitForTimeout(5000);
+
+    // Verify success
+    console.log("   🔍 Verifying post was published...");
+    const modalStillVisible = await page.isVisible('.share-creation-state').catch(() => false);
+    
+    if (!modalStillVisible) {
+      console.log("   ✅ Post dialog closed - POST PUBLISHED SUCCESSFULLY");
+    } else {
+      console.log("   ⚠️ Post dialog still visible - publication status unclear");
+    }
+
+    console.log("=".repeat(80));
+    
+    const finalMessage = !modalStillVisible
+      ? `✅ POST PUBLISHED SUCCESSFULLY ${mediaUploaded ? '✅ WITH MEDIA' : '⚠️ WITHOUT MEDIA'}`
+      : `⚠️ POST STATUS UNCLEAR ${mediaUploaded ? '(media was uploaded)' : '(no media)'}`;
+
+    console.log("\n" + "=".repeat(80));
+    console.log(finalMessage);
+    console.log("=".repeat(80) + "\n");
+
+    return {
+      success: !modalStillVisible,
+      message: finalMessage,
+      mediaUploaded: mediaUploaded,
+    };
+
+  } catch (error) {
+    console.log("\n" + "=".repeat(80));
+    console.error("❌ CRITICAL ERROR:", error.message);
+    console.error("Stack trace:", error.stack);
+    console.log("=".repeat(80) + "\n");
+
+    // Save screenshot
+    try {
+      const screenshotPath = path.join(process.cwd(), `linkedin-error-${Date.now()}.png`);
+      await page.screenshot({ path: screenshotPath, fullPage: true });
+      console.log(`📸 Error screenshot saved: ${screenshotPath}`);
+    } catch (e) {
+      console.log("⚠️ Could not save screenshot");
+    }
+
+    return {
+      success: false,
+      message: `Failed: ${error.message}`,
+      mediaUploaded: false,
+    };
+  }
+}
+
+
 async function createYouTubePost(page, postContent) {
   console.log("📺 Creating YouTube video...");
-  
+
   try {
     // 1️⃣ Open YouTube Studio
     await page.goto("https://studio.youtube.com", {
@@ -718,8 +1263,8 @@ async function createYouTubePost(page, postContent) {
     console.log("🔘 Clicking CREATE button...");
     const createButtonSelectors = [
       'button[aria-label="Create"]',
-      'ytcp-button#create-icon',
-      '#upload-icon',
+      "ytcp-button#create-icon",
+      "#upload-icon",
       'button:has-text("CREATE")',
     ];
 
@@ -748,7 +1293,7 @@ async function createYouTubePost(page, postContent) {
     const uploadOptionSelectors = [
       'text="Upload videos"',
       'tp-yt-paper-item:has-text("Upload videos")',
-      '#text-item-0',
+      "#text-item-0",
     ];
 
     let uploadClicked = false;
@@ -778,20 +1323,20 @@ async function createYouTubePost(page, postContent) {
       "public",
       postContent.media_urls
     );
-    
+
     console.log("🔍 Looking for video at:", absoluteVideoPath);
-    
+
     if (!fs.existsSync(absoluteVideoPath)) {
       throw new Error(`Video file not found: ${absoluteVideoPath}`);
     }
-    
+
     console.log("✅ Video file found");
 
     // 6️⃣ Upload video file
     console.log("📤 Uploading video...");
     const fileInputSelectors = [
       'input[type="file"]',
-      '#upload-input',
+      "#upload-input",
       'input[name="Filedata"]',
     ];
 
@@ -819,12 +1364,15 @@ async function createYouTubePost(page, postContent) {
 
     // 8️⃣ Fill in Title
     console.log("📝 Adding title...");
-    const title = postContent.title || postContent.content?.substring(0, 100) || "New Video";
-    
+    const title =
+      postContent.title ||
+      postContent.content?.substring(0, 100) ||
+      "New Video";
+
     const titleSelectors = [
-      '#textbox',
+      "#textbox",
       'div[aria-label="Add a title that describes your video"]',
-      '#title-textarea',
+      "#title-textarea",
       'ytcp-social-suggestions-textbox[label="Title"] #textbox',
     ];
 
@@ -852,11 +1400,12 @@ async function createYouTubePost(page, postContent) {
 
     // 9️⃣ Fill in Description
     console.log("📝 Adding description...");
-    const description = (postContent.content || "") + "\n\n" + (postContent.hashtags || "");
-    
+    const description =
+      (postContent.content || "") + "\n\n" + (postContent.hashtags || "");
+
     const descriptionSelectors = [
       'div[aria-label="Tell viewers about your video"]',
-      '#description-textarea #textbox',
+      "#description-textarea #textbox",
       'ytcp-social-suggestions-textbox[label="Description"] #textbox',
     ];
 
@@ -884,7 +1433,7 @@ async function createYouTubePost(page, postContent) {
     // 🔟 Select "No, it's not made for kids" (required)
     console.log("👶 Setting audience...");
     const notForKidsSelectors = [
-      '#radio-button-not-made-for-kids',
+      "#radio-button-not-made-for-kids",
       'tp-yt-paper-radio-button[name="VIDEO_MADE_FOR_KIDS_NOT_MFK"]',
     ];
 
@@ -918,11 +1467,11 @@ async function createYouTubePost(page, postContent) {
     // 1️⃣4️⃣ Select visibility (Public/Unlisted/Private)
     console.log("🔓 Setting visibility...");
     const visibility = postContent.visibility || "unlisted"; // default to unlisted
-    
+
     const visibilitySelectors = {
-      public: '#public-radio-button',
-      unlisted: '#unlisted-radio-button',
-      private: '#private-radio-button',
+      public: "#public-radio-button",
+      unlisted: "#unlisted-radio-button",
+      private: "#private-radio-button",
     };
 
     const visibilitySelector = visibilitySelectors[visibility.toLowerCase()];
@@ -940,9 +1489,9 @@ async function createYouTubePost(page, postContent) {
     // 1️⃣5️⃣ Click PUBLISH button
     console.log("📤 Publishing video...");
     const publishSelectors = [
-      'ytcp-button#done-button',
+      "ytcp-button#done-button",
       'button:has-text("Publish")',
-      '#done-button',
+      "#done-button",
     ];
 
     let published = false;
@@ -970,27 +1519,33 @@ async function createYouTubePost(page, postContent) {
     const successIndicators = [
       'text="Video published"',
       'text="Uploaded"',
-      'ytcp-video-share-dialog',
+      "ytcp-video-share-dialog",
     ];
 
     let uploadSuccess = false;
     for (const indicator of successIndicators) {
-      if (await page.locator(indicator).isVisible().catch(() => false)) {
+      if (
+        await page
+          .locator(indicator)
+          .isVisible()
+          .catch(() => false)
+      ) {
         uploadSuccess = true;
         break;
       }
     }
 
     console.log("✅ YouTube video uploaded successfully");
-    
+
     return {
       success: true,
-      message: uploadSuccess ? "Video published" : "Video upload likely successful",
+      message: uploadSuccess
+        ? "Video published"
+        : "Video upload likely successful",
     };
-
   } catch (error) {
     console.error("❌ YouTube upload failed:", error.message);
-    
+
     // Take screenshot for debugging
     try {
       await page.screenshot({
@@ -1001,7 +1556,7 @@ async function createYouTubePost(page, postContent) {
     } catch (screenshotError) {
       console.log("⚠️ Could not save screenshot");
     }
-    
+
     return {
       success: false,
       message: error.message,
@@ -1012,9 +1567,9 @@ async function createYouTubePost(page, postContent) {
 // Helper function to click NEXT button
 async function clickNextButton(page) {
   const nextButtonSelectors = [
-    'ytcp-button#next-button',
+    "ytcp-button#next-button",
     'button:has-text("Next")',
-    '#next-button',
+    "#next-button",
   ];
 
   for (const selector of nextButtonSelectors) {
@@ -2827,49 +3382,6 @@ async function createTikTokPost(page, postContent) {
 }
 
 // ==========================================
-// LINKEDIN POST
-// ==========================================
-async function createLinkedInPost(page, postContent) {
-  console.log("💼 Creating LinkedIn post...");
-
-  try {
-    await page.goto("https://www.linkedin.com/feed/", {
-      waitUntil: "domcontentloaded",
-      timeout: 30000,
-    });
-    await page.waitForTimeout(3000);
-
-    // Click "Start a post" button
-    await page.click('button:has-text("Start a post")');
-    await page.waitForTimeout(2000);
-
-    // Type content
-    const content = postContent?.content || "";
-    const hashtags = postContent?.hashtags || "";
-    const fullText = `${content}\n\n${hashtags}`.trim();
-
-    const editor = await page.locator(".ql-editor").first();
-    await editor.fill(fullText);
-
-    await page.waitForTimeout(2000);
-
-    // Click Post button
-    await page.click('button:has-text("Post")');
-    await page.waitForTimeout(5000);
-
-    console.log("✅ LinkedIn post created successfully");
-    return {
-      success: true,
-      message: "LinkedIn post created successfully",
-      post_url: page.url(),
-    };
-  } catch (error) {
-    console.error("❌ LinkedIn post failed:", error.message);
-    return { success: false, message: error.message };
-  }
-}
-
-// ==========================================
 // LIKE POST FUNCTION
 // ==========================================
 async function instagramLike(page, targetUrl) {
@@ -4108,7 +4620,7 @@ async function linkedinLike(page, targetUrl) {
 
         // Check if already liked - button will have specific aria-label or class
         const isPressed = btn.getAttribute("aria-pressed") === "true";
-        
+
         if (
           isPressed ||
           ariaLabel.toLowerCase().includes("you reacted") ||
@@ -4192,66 +4704,73 @@ async function linkedinLike(page, targetUrl) {
 
     // Now click the "Like" reaction from the popup menu
     console.log("🔍 Looking for Like reaction in menu...");
-    
+
     const likeReactionClicked = await page.evaluate(() => {
       // Look for the Like reaction button in the popup menu
       const reactionButtons = Array.from(document.querySelectorAll("button"));
-      
+
       for (const btn of reactionButtons) {
         const ariaLabel = btn.getAttribute("aria-label") || "";
         const classList = btn.className || "";
-        
+
         // The Like reaction in the menu has specific aria-label
         if (
           ariaLabel.toLowerCase() === "like" ||
           ariaLabel.toLowerCase().includes("react with like") ||
-          (classList.includes("reactions-menu") && ariaLabel.toLowerCase().includes("like"))
+          (classList.includes("reactions-menu") &&
+            ariaLabel.toLowerCase().includes("like"))
         ) {
           console.log("Found Like reaction:", ariaLabel);
           btn.setAttribute("data-li-like-reaction", "true");
           return true;
         }
       }
-      
+
       // Alternative: look for SVG or icon with "like" in aria-label
-      const allElements = Array.from(document.querySelectorAll('[aria-label]'));
+      const allElements = Array.from(document.querySelectorAll("[aria-label]"));
       for (const el of allElements) {
         const ariaLabel = el.getAttribute("aria-label") || "";
-        if (ariaLabel.toLowerCase() === "like" && el.closest('button')) {
-          const btn = el.closest('button');
+        if (ariaLabel.toLowerCase() === "like" && el.closest("button")) {
+          const btn = el.closest("button");
           btn.setAttribute("data-li-like-reaction", "true");
           console.log("Found Like reaction via SVG:", ariaLabel);
           return true;
         }
       }
-      
+
       return false;
     });
 
     if (!likeReactionClicked) {
-      console.log("⚠️ Like reaction not found in menu, post might already be liked");
+      console.log(
+        "⚠️ Like reaction not found in menu, post might already be liked"
+      );
       // The button click might have directly liked it (on some LinkedIn versions)
       await page.waitForTimeout(2000);
     } else {
       console.log("✅ Found Like reaction, clicking...");
       await page.waitForTimeout(500);
-      
+
       // Click the Like reaction
       let reactionClickSuccess = false;
-      
+
       try {
-        const likeReaction = page.locator('[data-li-like-reaction="true"]').first();
+        const likeReaction = page
+          .locator('[data-li-like-reaction="true"]')
+          .first();
         await likeReaction.click({ timeout: 5000 });
         reactionClickSuccess = true;
         console.log("✅ Clicked Like reaction via locator");
       } catch (e) {
         console.log("⚠️ Locator click failed for reaction:", e.message);
       }
-      
+
       if (!reactionClickSuccess) {
         try {
           await page.evaluate(() => {
-            const btn = document.querySelector('[data-li-like-reaction="true"]');
+            const btn = document.querySelector(
+              '[data-li-like-reaction="true"]'
+            );
             if (btn) btn.click();
           });
           reactionClickSuccess = true;
@@ -4260,7 +4779,7 @@ async function linkedinLike(page, targetUrl) {
           console.log("⚠️ JS click failed for reaction:", e.message);
         }
       }
-      
+
       if (!reactionClickSuccess) {
         console.log("⚠️ Failed to click Like reaction");
       }
@@ -4311,15 +4830,18 @@ async function linkedinLike(page, targetUrl) {
     }
   } catch (error) {
     console.error("❌ LinkedIn like error:", error.message);
-    
+
     // Take error screenshot
     try {
-      await page.screenshot({ path: 'linkedin_like_error.png', fullPage: true });
+      await page.screenshot({
+        path: "linkedin_like_error.png",
+        fullPage: true,
+      });
       console.log("📸 Error screenshot saved");
     } catch (e) {
       // Ignore screenshot errors
     }
-    
+
     return {
       success: false,
       message: error.message,
@@ -5848,7 +6370,7 @@ async function youtubeComment(page, targetUrl, commentText) {
 
 async function linkedinComment(page, targetUrl, commentText) {
   console.log("🔵 Commenting on LinkedIn...");
-  
+
   if (!targetUrl) throw new Error("Target URL missing");
   if (!commentText) throw new Error("Comment text missing");
 
@@ -5877,14 +6399,19 @@ async function linkedinComment(page, targetUrl, commentText) {
       for (const btn of buttons) {
         const ariaLabel = btn.getAttribute("aria-label") || "";
         const text = btn.textContent?.trim() || "";
-        
+
         // Look for the button that opens the comment box (not the submit button)
         if (
           ariaLabel.toLowerCase().includes("comment on") ||
           ariaLabel.toLowerCase().includes("add a comment") ||
-          (text === "Comment" && !btn.closest('form') && !btn.closest('[class*="comment-box"]'))
+          (text === "Comment" &&
+            !btn.closest("form") &&
+            !btn.closest('[class*="comment-box"]'))
         ) {
-          console.log("✅ Found Comment button to open box:", ariaLabel || text);
+          console.log(
+            "✅ Found Comment button to open box:",
+            ariaLabel || text
+          );
           btn.click();
           return true;
         }
@@ -5893,7 +6420,9 @@ async function linkedinComment(page, targetUrl, commentText) {
     });
 
     if (!commentButtonClicked) {
-      console.log("⚠️ Comment button not found, checking if comment box already visible...");
+      console.log(
+        "⚠️ Comment button not found, checking if comment box already visible..."
+      );
     } else {
       console.log("✅ Clicked Comment button");
       await page.waitForTimeout(2000);
@@ -5944,11 +6473,11 @@ async function linkedinComment(page, targetUrl, commentText) {
     const commentBox = page.locator('[data-li-comment-box="true"]').first();
     await commentBox.click();
     await page.waitForTimeout(1000);
-    
+
     // Clear any existing text
-    await commentBox.fill('');
+    await commentBox.fill("");
     await page.waitForTimeout(500);
-    
+
     // Type the comment
     await commentBox.fill(commentText);
     await page.waitForTimeout(1500);
@@ -5961,14 +6490,14 @@ async function linkedinComment(page, targetUrl, commentText) {
 
     // Find the SUBMIT Comment button (the blue button that says "Comment")
     console.log("🔍 Looking for Comment submit button...");
-    
+
     // Strategy 1: Try common selectors for the submit button
     let submitButton = null;
     const selectors = [
-      'button.comments-comment-box__submit-button',
+      "button.comments-comment-box__submit-button",
       'button[type="submit"]',
       'form button:has-text("Comment")',
-      '.comments-comment-box button:has-text("Comment")'
+      '.comments-comment-box button:has-text("Comment")',
     ];
 
     for (const selector of selectors) {
@@ -5979,7 +6508,9 @@ async function linkedinComment(page, targetUrl, commentText) {
           const isEnabled = await btn.isEnabled();
           if (isEnabled) {
             submitButton = btn;
-            console.log(`✅ Found Comment submit button with selector: ${selector}`);
+            console.log(
+              `✅ Found Comment submit button with selector: ${selector}`
+            );
             break;
           }
         }
@@ -5996,17 +6527,18 @@ async function linkedinComment(page, targetUrl, commentText) {
           const text = btn.textContent?.trim() || "";
           const ariaLabel = btn.getAttribute("aria-label") || "";
           const classList = btn.className || "";
-          
+
           // Look for the blue "Comment" submit button
           // It's inside the comment box form/container
-          if (text === "Comment" && 
-              (btn.closest('form') || 
-               btn.closest('[class*="comment-box"]') ||
-               classList.includes("comments-comment-box__submit-button"))) {
-            
+          if (
+            text === "Comment" &&
+            (btn.closest("form") ||
+              btn.closest('[class*="comment-box"]') ||
+              classList.includes("comments-comment-box__submit-button"))
+          ) {
             const isDisabled = btn.hasAttribute("disabled") || btn.disabled;
             const rect = btn.getBoundingClientRect();
-            
+
             if (!isDisabled && rect.width > 0 && rect.height > 0) {
               console.log("✅ Found enabled Comment submit button");
               btn.setAttribute("data-li-submit-btn", "true");
@@ -6058,8 +6590,11 @@ async function linkedinComment(page, targetUrl, commentText) {
     if (!clickSuccess) {
       try {
         await page.evaluate(() => {
-          const btn = document.querySelector('[data-li-submit-btn="true"]') ||
-                      document.querySelector('button.comments-comment-box__submit-button');
+          const btn =
+            document.querySelector('[data-li-submit-btn="true"]') ||
+            document.querySelector(
+              "button.comments-comment-box__submit-button"
+            );
           if (btn) {
             btn.click();
           } else {
@@ -6077,14 +6612,19 @@ async function linkedinComment(page, targetUrl, commentText) {
     if (!clickSuccess) {
       try {
         await page.evaluate(() => {
-          const btn = document.querySelector('[data-li-submit-btn="true"]') ||
-                      document.querySelector('button.comments-comment-box__submit-button');
+          const btn =
+            document.querySelector('[data-li-submit-btn="true"]') ||
+            document.querySelector(
+              "button.comments-comment-box__submit-button"
+            );
           if (btn) {
-            btn.dispatchEvent(new MouseEvent('click', {
-              view: window,
-              bubbles: true,
-              cancelable: true
-            }));
+            btn.dispatchEvent(
+              new MouseEvent("click", {
+                view: window,
+                bubbles: true,
+                cancelable: true,
+              })
+            );
           }
         });
         clickSuccess = true;
@@ -6096,7 +6636,10 @@ async function linkedinComment(page, targetUrl, commentText) {
 
     if (!clickSuccess) {
       // Take a screenshot for debugging
-      await page.screenshot({ path: 'linkedin_comment_error.png', fullPage: true });
+      await page.screenshot({
+        path: "linkedin_comment_error.png",
+        fullPage: true,
+      });
       throw new Error("Failed to click Comment submit button with all methods");
     }
 
@@ -6107,7 +6650,9 @@ async function linkedinComment(page, targetUrl, commentText) {
     console.log("🔍 Verifying comment...");
     const verified = await page.evaluate((text) => {
       // Check if comment appears in the page
-      const comments = Array.from(document.querySelectorAll('.comments-comment-item'));
+      const comments = Array.from(
+        document.querySelectorAll(".comments-comment-item")
+      );
       for (const comment of comments) {
         if (comment.innerText.includes(text)) {
           return true;
@@ -6130,13 +6675,15 @@ async function linkedinComment(page, targetUrl, commentText) {
       post_url: targetUrl,
       comment: commentText,
     };
-
   } catch (error) {
     console.error("❌ LinkedIn comment failed:", error.message);
-    
+
     // Take error screenshot
     try {
-      await page.screenshot({ path: 'linkedin_comment_error.png', fullPage: true });
+      await page.screenshot({
+        path: "linkedin_comment_error.png",
+        fullPage: true,
+      });
       console.log("📸 Error screenshot saved");
     } catch (e) {
       // Ignore screenshot errors
@@ -8206,11 +8753,11 @@ async function linkedinUnfollow(page, targetUrl) {
     const moreButtonClicked = await page.evaluate(() => {
       // Method 1: Look for button with "More" text
       const buttons = Array.from(document.querySelectorAll("button"));
-      
+
       for (const btn of buttons) {
         const text = btn.textContent?.trim() || "";
         const ariaLabel = btn.getAttribute("aria-label") || "";
-        
+
         // Check for "More" button
         if (
           text === "More" ||
@@ -8228,7 +8775,7 @@ async function linkedinUnfollow(page, targetUrl) {
       const moreButtons = document.querySelectorAll(
         'button[aria-label*="More"], button.artdeco-dropdown__trigger'
       );
-      
+
       for (const btn of moreButtons) {
         console.log("✅ Found More button via selector");
         btn.click();
@@ -8239,7 +8786,7 @@ async function linkedinUnfollow(page, targetUrl) {
       const overflowBtns = document.querySelectorAll(
         'button[data-control-name*="overflow"]'
       );
-      
+
       for (const btn of overflowBtns) {
         console.log("✅ Found overflow menu button");
         btn.click();
@@ -8251,11 +8798,11 @@ async function linkedinUnfollow(page, targetUrl) {
 
     if (!moreButtonClicked) {
       console.log("⚠️ More button not found, trying alternative approach...");
-      
+
       // Alternative: Try to find and click by position or other attributes
       const alternativeClick = await page.evaluate(() => {
         const allButtons = document.querySelectorAll("button");
-        
+
         for (const btn of allButtons) {
           const spans = btn.querySelectorAll("span");
           for (const span of spans) {
@@ -8268,7 +8815,7 @@ async function linkedinUnfollow(page, targetUrl) {
         }
         return false;
       });
-      
+
       if (!alternativeClick) {
         throw new Error("More button not found with any method");
       }
@@ -8298,13 +8845,15 @@ async function linkedinUnfollow(page, targetUrl) {
           ariaLabel.includes("Unfollow")
         ) {
           console.log("✅ Found Unfollow option:", text);
-          
+
           // Try to click the element or its parent
           if (item.tagName === "BUTTON" || item.tagName === "DIV") {
             item.click();
           } else {
             // If it's a span, click the parent
-            const parent = item.closest("button, div[role='menuitem'], li[role='menuitem']");
+            const parent = item.closest(
+              "button, div[role='menuitem'], li[role='menuitem']"
+            );
             if (parent) {
               parent.click();
             } else {
@@ -8351,7 +8900,7 @@ async function linkedinUnfollow(page, targetUrl) {
       const dialogButtons = document.querySelectorAll(
         'div[role="dialog"] button, .artdeco-modal button'
       );
-      
+
       for (const btn of dialogButtons) {
         const text = btn.textContent?.trim() || "";
         if (text === "Unfollow") {
@@ -8386,9 +8935,9 @@ async function linkedinUnfollow(page, targetUrl) {
 
         if (
           text === "Follow" ||
-          (ariaLabel.includes("Follow") && 
-           !ariaLabel.includes("Following") && 
-           !ariaLabel.includes("Unfollow"))
+          (ariaLabel.includes("Follow") &&
+            !ariaLabel.includes("Following") &&
+            !ariaLabel.includes("Unfollow"))
         ) {
           console.log("✅ Verified - Follow button now visible");
           return true;
@@ -8396,7 +8945,7 @@ async function linkedinUnfollow(page, targetUrl) {
       }
 
       // Alternative verification: Check if "Following" or "Unfollow" is gone
-      const hasFollowing = buttons.some(btn => {
+      const hasFollowing = buttons.some((btn) => {
         const text = btn.textContent?.trim() || "";
         return text === "Following";
       });
@@ -8498,7 +9047,6 @@ app.post("/stop-scroll", async (req, res) => {
     message: "No active scroll bot found for this account",
   });
 });
-
 
 // --------------- GET SCROLL BOT STATUS -------------------
 app.post("/scroll-status", async (req, res) => {
@@ -10559,7 +11107,7 @@ async function linkedinScrollBot(page, accountId, options = {}) {
     try {
       return await page.evaluate((element) => {
         if (!element) return false;
-        
+
         const buttons = Array.from(element.querySelectorAll("button"));
 
         for (const btn of buttons) {
@@ -10569,10 +11117,10 @@ async function linkedinScrollBot(page, accountId, options = {}) {
 
           if (
             (ariaLabel.toLowerCase().includes("react") ||
-             ariaLabel.toLowerCase().includes("like")) &&
+              ariaLabel.toLowerCase().includes("like")) &&
             (isPressed ||
-             ariaLabel.toLowerCase().includes("you reacted") ||
-             ariaLabel.toLowerCase().includes("unlike"))
+              ariaLabel.toLowerCase().includes("you reacted") ||
+              ariaLabel.toLowerCase().includes("unlike"))
           ) {
             return true;
           }
@@ -10601,8 +11149,8 @@ async function linkedinScrollBot(page, accountId, options = {}) {
           // Find the Like button (not already liked)
           if (
             (btnText === "Like" ||
-             ariaLabel.toLowerCase().includes("react like") ||
-             ariaLabel.toLowerCase().includes("like this")) &&
+              ariaLabel.toLowerCase().includes("react like") ||
+              ariaLabel.toLowerCase().includes("like this")) &&
             !isPressed &&
             !ariaLabel.toLowerCase().includes("you reacted")
           ) {
@@ -10617,14 +11165,14 @@ async function linkedinScrollBot(page, accountId, options = {}) {
 
       if (liked) {
         await page.waitForTimeout(1500); // Wait for reactions menu
-        
+
         // Click the "Like" reaction from the menu
         const reactionClicked = await page.evaluate(() => {
           const buttons = Array.from(document.querySelectorAll("button"));
-          
+
           for (const btn of buttons) {
             const ariaLabel = btn.getAttribute("aria-label") || "";
-            
+
             if (
               ariaLabel.toLowerCase() === "like" ||
               ariaLabel.toLowerCase().includes("react with like")
@@ -10634,7 +11182,7 @@ async function linkedinScrollBot(page, accountId, options = {}) {
               return true;
             }
           }
-          
+
           return false;
         });
 
@@ -10670,9 +11218,9 @@ async function linkedinScrollBot(page, accountId, options = {}) {
 
           // Look for Comment button (not the submit button)
           if (
-            (ariaLabel.toLowerCase().includes("comment on") ||
-             ariaLabel.toLowerCase().includes("add a comment") ||
-             (btnText === "Comment" && !btn.closest('form')))
+            ariaLabel.toLowerCase().includes("comment on") ||
+            ariaLabel.toLowerCase().includes("add a comment") ||
+            (btnText === "Comment" && !btn.closest("form"))
           ) {
             btn.scrollIntoView({ behavior: "smooth", block: "center" });
             btn.click();
@@ -10694,7 +11242,9 @@ async function linkedinScrollBot(page, accountId, options = {}) {
       // Find comment box
       const commentBoxFound = await page.evaluate(() => {
         const boxes = Array.from(
-          document.querySelectorAll('div[contenteditable="true"], div[role="textbox"]')
+          document.querySelectorAll(
+            'div[contenteditable="true"], div[role="textbox"]'
+          )
         );
 
         for (const box of boxes) {
@@ -10745,13 +11295,13 @@ async function linkedinScrollBot(page, accountId, options = {}) {
           // Look for the submit Comment button
           if (
             text === "Comment" &&
-            (btn.closest('form') || 
-             btn.closest('[class*="comment-box"]') ||
-             classList.includes("comments-comment-box__submit-button"))
+            (btn.closest("form") ||
+              btn.closest('[class*="comment-box"]') ||
+              classList.includes("comments-comment-box__submit-button"))
           ) {
             const isDisabled = btn.hasAttribute("disabled") || btn.disabled;
             const rect = btn.getBoundingClientRect();
-            
+
             if (!isDisabled && rect.width > 0 && rect.height > 0) {
               btn.click();
               console.log("✅ Comment submitted");
@@ -10860,7 +11410,10 @@ async function linkedinScrollBot(page, accountId, options = {}) {
 
           // Check if already processed
           const postId = await page.evaluate(
-            (el) => el?.getAttribute("data-urn") || el?.id || Math.random().toString(),
+            (el) =>
+              el?.getAttribute("data-urn") ||
+              el?.id ||
+              Math.random().toString(),
             postElement
           );
 
@@ -10895,12 +11448,9 @@ async function linkedinScrollBot(page, accountId, options = {}) {
           }
 
           // Mark as processed
-          await page.evaluate(
-            (el) => {
-              if (el) el.setAttribute("data-processed", "true");
-            },
-            postElement
-          );
+          await page.evaluate((el) => {
+            if (el) el.setAttribute("data-processed", "true");
+          }, postElement);
 
           consecutiveErrors = 0;
 
