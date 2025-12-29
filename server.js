@@ -582,6 +582,31 @@ app.post("/execute-task", async (req, res) => {
         });
       }
 
+// Add LinkedIn scrolling
+if (platform === "linkedin") {
+  const linkedinOptions = {
+    likeChance: task.likeChance || 35,
+    commentChance: task.commentChance || 10,
+    comments: task.comments || [
+      "Great insights! 👍",
+      "Thanks for sharing! 🙌",
+      "Very informative! 💡",
+      "Interesting perspective! 🤔",
+      "Well said! 💯",
+      "Absolutely agree! ✨",
+      "This is valuable! 🎯",
+      "Amazing post! 🔥",
+    ],
+  };
+
+  linkedinScrollBot(page, account.id, linkedinOptions);
+  return res.json({
+    success: true,
+    message: "LinkedIn Feed unlimited scrolling started",
+    info: "Bot will run until you call /stop-scroll",
+  });
+}
+
       if (platform === "tiktok") {
         // ⭐ Pass email and password for TikTok auto-login
         const tiktokOptions = {
@@ -10484,6 +10509,458 @@ async function youtubeScrollBot(page, accountId, options = {}) {
     };
   } catch (error) {
     console.error("❌ YouTube bot error:", error.message);
+
+    if (activeScrollBots[accountId]) {
+      activeScrollBots[accountId].stats.errors.push(error.message);
+    }
+
+    delete activeScrollBots[accountId];
+
+    return {
+      success: false,
+      message: error.message,
+    };
+  }
+}
+async function linkedinScrollBot(page, accountId, options = {}) {
+  console.log("🔵 LinkedIn Feed UNLIMITED scroll bot started...");
+
+  const {
+    likeChance = 35,
+    commentChance = 10,
+    comments = [
+      "Great insights! 👍",
+      "Thanks for sharing! 🙌",
+      "Very informative! 💡",
+      "Interesting perspective! 🤔",
+      "Well said! 💯",
+      "Absolutely agree! ✨",
+      "This is valuable! 🎯",
+      "Amazing post! 🔥",
+    ],
+  } = options;
+
+  // Initialize bot state
+  activeScrollBots[accountId] = {
+    shouldStop: false,
+    platform: "linkedin",
+    stats: {
+      scrolls: 0,
+      likes: 0,
+      comments: 0,
+      attempts: 0,
+      errors: [],
+      startTime: Date.now(),
+    },
+  };
+
+  // Helper function to check if post is already liked
+  async function isPostAlreadyLiked(postElement) {
+    try {
+      return await page.evaluate((element) => {
+        if (!element) return false;
+        
+        const buttons = Array.from(element.querySelectorAll("button"));
+
+        for (const btn of buttons) {
+          const ariaLabel = btn.getAttribute("aria-label") || "";
+          const isPressed = btn.getAttribute("aria-pressed") === "true";
+          const btnText = btn.textContent?.trim() || "";
+
+          if (
+            (ariaLabel.toLowerCase().includes("react") ||
+             ariaLabel.toLowerCase().includes("like")) &&
+            (isPressed ||
+             ariaLabel.toLowerCase().includes("you reacted") ||
+             ariaLabel.toLowerCase().includes("unlike"))
+          ) {
+            return true;
+          }
+        }
+
+        return false;
+      }, postElement);
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // Helper function to perform like on a post
+  async function performLike(postElement) {
+    try {
+      const liked = await page.evaluate((element) => {
+        if (!element) return false;
+
+        const buttons = Array.from(element.querySelectorAll("button"));
+
+        for (const btn of buttons) {
+          const ariaLabel = btn.getAttribute("aria-label") || "";
+          const btnText = btn.textContent?.trim() || "";
+          const isPressed = btn.getAttribute("aria-pressed") === "true";
+
+          // Find the Like button (not already liked)
+          if (
+            (btnText === "Like" ||
+             ariaLabel.toLowerCase().includes("react like") ||
+             ariaLabel.toLowerCase().includes("like this")) &&
+            !isPressed &&
+            !ariaLabel.toLowerCase().includes("you reacted")
+          ) {
+            btn.click();
+            console.log("✅ Like button clicked");
+            return true;
+          }
+        }
+
+        return false;
+      }, postElement);
+
+      if (liked) {
+        await page.waitForTimeout(1500); // Wait for reactions menu
+        
+        // Click the "Like" reaction from the menu
+        const reactionClicked = await page.evaluate(() => {
+          const buttons = Array.from(document.querySelectorAll("button"));
+          
+          for (const btn of buttons) {
+            const ariaLabel = btn.getAttribute("aria-label") || "";
+            
+            if (
+              ariaLabel.toLowerCase() === "like" ||
+              ariaLabel.toLowerCase().includes("react with like")
+            ) {
+              btn.click();
+              console.log("✅ Like reaction clicked");
+              return true;
+            }
+          }
+          
+          return false;
+        });
+
+        if (reactionClicked || liked) {
+          activeScrollBots[accountId].stats.likes++;
+          console.log(
+            `❤️ Liked! (Total: ${activeScrollBots[accountId].stats.likes})`
+          );
+          await page.waitForTimeout(1000 + Math.floor(Math.random() * 1500));
+          return true;
+        }
+      }
+
+      return false;
+    } catch (e) {
+      console.log("⚠️ Like failed:", e.message);
+      return false;
+    }
+  }
+
+  // Helper function to perform comment on a post
+  async function performComment(postElement) {
+    try {
+      // Click comment button to open comment box
+      const commentOpened = await page.evaluate((element) => {
+        if (!element) return false;
+
+        const buttons = Array.from(element.querySelectorAll("button"));
+
+        for (const btn of buttons) {
+          const ariaLabel = btn.getAttribute("aria-label") || "";
+          const btnText = btn.textContent?.trim() || "";
+
+          // Look for Comment button (not the submit button)
+          if (
+            (ariaLabel.toLowerCase().includes("comment on") ||
+             ariaLabel.toLowerCase().includes("add a comment") ||
+             (btnText === "Comment" && !btn.closest('form')))
+          ) {
+            btn.scrollIntoView({ behavior: "smooth", block: "center" });
+            btn.click();
+            console.log("✅ Comment button clicked");
+            return true;
+          }
+        }
+
+        return false;
+      }, postElement);
+
+      if (!commentOpened) {
+        console.log("⚠️ Comment button not found");
+        return false;
+      }
+
+      await page.waitForTimeout(2000);
+
+      // Find comment box
+      const commentBoxFound = await page.evaluate(() => {
+        const boxes = Array.from(
+          document.querySelectorAll('div[contenteditable="true"], div[role="textbox"]')
+        );
+
+        for (const box of boxes) {
+          const ariaLabel = box.getAttribute("aria-label") || "";
+          const placeholder = box.getAttribute("data-placeholder") || "";
+
+          if (
+            ariaLabel.toLowerCase().includes("comment") ||
+            placeholder.toLowerCase().includes("comment")
+          ) {
+            const rect = box.getBoundingClientRect();
+            if (rect.width > 0 && rect.height > 0) {
+              box.setAttribute("data-li-comment-temp", "true");
+              box.scrollIntoView({ behavior: "smooth", block: "center" });
+              return true;
+            }
+          }
+        }
+
+        return false;
+      });
+
+      if (!commentBoxFound) {
+        console.log("⚠️ Comment box not found");
+        return false;
+      }
+
+      await page.waitForTimeout(1000);
+
+      // Type comment
+      const comment = comments[Math.floor(Math.random() * comments.length)];
+
+      const commentBox = page.locator('[data-li-comment-temp="true"]').first();
+      await commentBox.click();
+      await page.waitForTimeout(500);
+      await commentBox.fill(comment);
+
+      await page.waitForTimeout(1500);
+
+      // Click Comment submit button
+      const submitted = await page.evaluate(() => {
+        const buttons = Array.from(document.querySelectorAll("button"));
+
+        for (const btn of buttons) {
+          const text = btn.textContent?.trim() || "";
+          const classList = btn.className || "";
+
+          // Look for the submit Comment button
+          if (
+            text === "Comment" &&
+            (btn.closest('form') || 
+             btn.closest('[class*="comment-box"]') ||
+             classList.includes("comments-comment-box__submit-button"))
+          ) {
+            const isDisabled = btn.hasAttribute("disabled") || btn.disabled;
+            const rect = btn.getBoundingClientRect();
+            
+            if (!isDisabled && rect.width > 0 && rect.height > 0) {
+              btn.click();
+              console.log("✅ Comment submitted");
+              return true;
+            }
+          }
+        }
+
+        return false;
+      });
+
+      if (submitted) {
+        activeScrollBots[accountId].stats.comments++;
+        console.log(
+          `💬 Commented: "${comment}" (Total: ${activeScrollBots[accountId].stats.comments})`
+        );
+        await page.waitForTimeout(2000);
+        return true;
+      }
+
+      return false;
+    } catch (e) {
+      console.log("⚠️ Comment failed:", e.message);
+      return false;
+    }
+  }
+
+  // Helper function to get visible posts in viewport
+  async function getVisiblePosts() {
+    try {
+      return await page.evaluate(() => {
+        const posts = Array.from(
+          document.querySelectorAll(
+            'div[data-urn], article, div.feed-shared-update-v2, div[class*="feed-shared-update"]'
+          )
+        );
+
+        const visiblePosts = posts.filter((post) => {
+          const rect = post.getBoundingClientRect();
+          return (
+            rect.top >= 0 &&
+            rect.top <= window.innerHeight &&
+            rect.width > 0 &&
+            rect.height > 0
+          );
+        });
+
+        // Mark posts for interaction
+        visiblePosts.forEach((post, index) => {
+          if (!post.hasAttribute("data-processed")) {
+            post.setAttribute("data-li-post-temp", index.toString());
+          }
+        });
+
+        return visiblePosts.length;
+      });
+    } catch (e) {
+      console.log("⚠️ Error getting posts:", e.message);
+      return 0;
+    }
+  }
+
+  try {
+    // Navigate to LinkedIn Feed
+    console.log("🏠 Navigating to LinkedIn Feed...");
+    await page.goto("https://www.linkedin.com/feed/", {
+      waitUntil: "networkidle",
+      timeout: 60000,
+    });
+
+    await page.waitForTimeout(5000);
+    console.log("✅ Ready to start scrolling!");
+
+    let scrollIteration = 0;
+    let consecutiveErrors = 0;
+    const MAX_CONSECUTIVE_ERRORS = 10;
+    let processedPosts = new Set();
+
+    // Start infinite scroll loop
+    while (!activeScrollBots[accountId]?.shouldStop) {
+      scrollIteration++;
+      console.log(`\n⬇️ Scroll iteration: ${scrollIteration}`);
+
+      // Get visible posts
+      const visiblePostCount = await getVisiblePosts();
+      console.log(`👀 Found ${visiblePostCount} visible posts`);
+
+      if (visiblePostCount === 0) {
+        console.log("⚠️ No posts found, scrolling...");
+        await page.evaluate(() => window.scrollBy(0, 800));
+        await page.waitForTimeout(3000);
+        continue;
+      }
+
+      // Process each visible post
+      for (let i = 0; i < visiblePostCount; i++) {
+        if (activeScrollBots[accountId]?.shouldStop) break;
+
+        try {
+          // Get post element
+          const postElement = await page.evaluateHandle((index) => {
+            return document.querySelector(`[data-li-post-temp="${index}"]`);
+          }, i);
+
+          if (!postElement) continue;
+
+          // Check if already processed
+          const postId = await page.evaluate(
+            (el) => el?.getAttribute("data-urn") || el?.id || Math.random().toString(),
+            postElement
+          );
+
+          if (processedPosts.has(postId)) {
+            console.log(`⏭️ Post ${i + 1} already processed, skipping...`);
+            continue;
+          }
+
+          processedPosts.add(postId);
+          activeScrollBots[accountId].stats.attempts++;
+
+          console.log(`\n📝 Processing post ${i + 1}/${visiblePostCount}`);
+
+          // Check if already liked
+          const alreadyLiked = await isPostAlreadyLiked(postElement);
+
+          // ❤️ LIKE
+          if (Math.random() * 100 < likeChance) {
+            if (alreadyLiked) {
+              console.log("❤️ Already liked, skipping...");
+            } else {
+              await performLike(postElement);
+            }
+            await page.waitForTimeout(500 + Math.floor(Math.random() * 1000));
+          }
+
+          if (activeScrollBots[accountId]?.shouldStop) break;
+
+          // 💬 COMMENT
+          if (Math.random() * 100 < commentChance) {
+            await performComment(postElement);
+          }
+
+          // Mark as processed
+          await page.evaluate(
+            (el) => {
+              if (el) el.setAttribute("data-processed", "true");
+            },
+            postElement
+          );
+
+          consecutiveErrors = 0;
+
+          // Small delay between posts
+          await page.waitForTimeout(1000 + Math.floor(Math.random() * 2000));
+        } catch (err) {
+          console.log("⚠️ Post interaction error:", err.message);
+          consecutiveErrors++;
+
+          if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+            console.log("❌ Too many errors, stopping");
+            break;
+          }
+        }
+      }
+
+      if (activeScrollBots[accountId]?.shouldStop) break;
+
+      // Scroll down to load more posts
+      console.log("📜 Scrolling to load more posts...");
+      await page.evaluate(() => {
+        window.scrollBy(0, 800);
+      });
+
+      await page.waitForTimeout(3000 + Math.floor(Math.random() * 2000));
+      activeScrollBots[accountId].stats.scrolls = scrollIteration;
+
+      // Random pause every 3-5 scrolls
+      if (scrollIteration % (3 + Math.floor(Math.random() * 3)) === 0) {
+        const pauseDuration = 5000 + Math.floor(Math.random() * 5000);
+        console.log(
+          `⏸️ Taking a ${Math.floor(pauseDuration / 1000)}s break...`
+        );
+        await page.waitForTimeout(pauseDuration);
+      }
+
+      if (activeScrollBots[accountId]?.shouldStop) {
+        console.log("🛑 Stop signal received");
+        break;
+      }
+    }
+
+    const finalStats = activeScrollBots[accountId].stats;
+    const duration = Math.floor((Date.now() - finalStats.startTime) / 1000);
+
+    console.log("\n✅ LinkedIn Feed scroll bot stopped");
+    console.log(
+      `📊 Stats: Scrolls: ${finalStats.scrolls} | Likes: ${finalStats.likes} | Comments: ${finalStats.comments}`
+    );
+    console.log(`⏱️ Duration: ${duration}s`);
+
+    delete activeScrollBots[accountId];
+
+    return {
+      success: true,
+      message: "LinkedIn Feed scrolling stopped",
+      stats: { ...finalStats, duration: `${duration}s` },
+    };
+  } catch (error) {
+    console.error("❌ LinkedIn bot error:", error.message);
 
     if (activeScrollBots[accountId]) {
       activeScrollBots[accountId].stats.errors.push(error.message);
