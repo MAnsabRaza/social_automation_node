@@ -4048,7 +4048,262 @@ async function youtubeLike(page, targetUrl) {
   }
 }
 
-// Update likePost to include YouTube
+async function linkedinLike(page, targetUrl) {
+  console.log("❤️ Liking LinkedIn post...");
+
+  try {
+    if (!targetUrl) throw new Error("Target URL missing");
+
+    // Navigate to post
+    console.log(`🔵 Navigating to: ${targetUrl}`);
+    await page.goto(targetUrl, {
+      waitUntil: "networkidle",
+      timeout: 60000,
+    });
+
+    console.log("⏳ LinkedIn post loaded, waiting...");
+    await page.waitForTimeout(4000);
+
+    // Scroll to ensure post actions are loaded
+    await page.evaluate(() => {
+      window.scrollBy(0, 300);
+    });
+    await page.waitForTimeout(2000);
+
+    console.log("🔍 Searching for like button...");
+
+    // Find the like button
+    const buttonInfo = await page.evaluate(() => {
+      const buttons = Array.from(document.querySelectorAll("button"));
+
+      for (const btn of buttons) {
+        const ariaLabel = btn.getAttribute("aria-label") || "";
+        const classList = btn.className || "";
+        const btnText = btn.textContent?.trim() || "";
+
+        // Check if already liked - button will have specific aria-label or class
+        const isPressed = btn.getAttribute("aria-pressed") === "true";
+        
+        if (
+          isPressed ||
+          ariaLabel.toLowerCase().includes("you reacted") ||
+          ariaLabel.toLowerCase().includes("unlike")
+        ) {
+          console.log("Already liked - found:", ariaLabel);
+          return { found: true, alreadyLiked: true };
+        }
+
+        // Look for the Like button (the one that shows "Like" text)
+        if (
+          btnText === "Like" ||
+          ariaLabel.toLowerCase().includes("react like") ||
+          ariaLabel.toLowerCase().includes("like this") ||
+          (ariaLabel.toLowerCase().includes("react") && btnText === "Like")
+        ) {
+          console.log("Found Like button:", ariaLabel, "Text:", btnText);
+          btn.setAttribute("data-li-like", "true");
+          return { found: true, alreadyLiked: false };
+        }
+      }
+
+      return { found: false, alreadyLiked: false };
+    });
+
+    console.log("Button search result:", buttonInfo);
+
+    if (buttonInfo.alreadyLiked) {
+      console.log("💗 LinkedIn post already liked");
+      return {
+        success: true,
+        message: "LinkedIn post already liked",
+        alreadyLiked: true,
+        post_url: targetUrl,
+      };
+    }
+
+    if (!buttonInfo.found) {
+      throw new Error("LinkedIn Like button not found");
+    }
+
+    console.log("✅ Like button found! Clicking...");
+    await page.waitForTimeout(1000);
+
+    // Click the like button - this will open the reactions menu
+    let clickSuccess = false;
+
+    // Strategy 1: Locator click
+    try {
+      const likeBtn = page.locator('[data-li-like="true"]').first();
+      await likeBtn.scrollIntoViewIfNeeded();
+      await page.waitForTimeout(500);
+      await likeBtn.click({ timeout: 5000 });
+      clickSuccess = true;
+      console.log("✅ Clicked Like button via locator");
+    } catch (e) {
+      console.log("⚠️ Locator click failed:", e.message);
+    }
+
+    // Strategy 2: JavaScript click
+    if (!clickSuccess) {
+      try {
+        await page.evaluate(() => {
+          const btn = document.querySelector('[data-li-like="true"]');
+          if (btn) btn.click();
+        });
+        clickSuccess = true;
+        console.log("✅ Clicked Like button via JavaScript");
+      } catch (e) {
+        console.log("⚠️ JS click failed:", e.message);
+      }
+    }
+
+    if (!clickSuccess) {
+      throw new Error("Failed to click Like button");
+    }
+
+    // Wait for reactions menu to appear
+    console.log("⏳ Waiting for reactions menu...");
+    await page.waitForTimeout(1500);
+
+    // Now click the "Like" reaction from the popup menu
+    console.log("🔍 Looking for Like reaction in menu...");
+    
+    const likeReactionClicked = await page.evaluate(() => {
+      // Look for the Like reaction button in the popup menu
+      const reactionButtons = Array.from(document.querySelectorAll("button"));
+      
+      for (const btn of reactionButtons) {
+        const ariaLabel = btn.getAttribute("aria-label") || "";
+        const classList = btn.className || "";
+        
+        // The Like reaction in the menu has specific aria-label
+        if (
+          ariaLabel.toLowerCase() === "like" ||
+          ariaLabel.toLowerCase().includes("react with like") ||
+          (classList.includes("reactions-menu") && ariaLabel.toLowerCase().includes("like"))
+        ) {
+          console.log("Found Like reaction:", ariaLabel);
+          btn.setAttribute("data-li-like-reaction", "true");
+          return true;
+        }
+      }
+      
+      // Alternative: look for SVG or icon with "like" in aria-label
+      const allElements = Array.from(document.querySelectorAll('[aria-label]'));
+      for (const el of allElements) {
+        const ariaLabel = el.getAttribute("aria-label") || "";
+        if (ariaLabel.toLowerCase() === "like" && el.closest('button')) {
+          const btn = el.closest('button');
+          btn.setAttribute("data-li-like-reaction", "true");
+          console.log("Found Like reaction via SVG:", ariaLabel);
+          return true;
+        }
+      }
+      
+      return false;
+    });
+
+    if (!likeReactionClicked) {
+      console.log("⚠️ Like reaction not found in menu, post might already be liked");
+      // The button click might have directly liked it (on some LinkedIn versions)
+      await page.waitForTimeout(2000);
+    } else {
+      console.log("✅ Found Like reaction, clicking...");
+      await page.waitForTimeout(500);
+      
+      // Click the Like reaction
+      let reactionClickSuccess = false;
+      
+      try {
+        const likeReaction = page.locator('[data-li-like-reaction="true"]').first();
+        await likeReaction.click({ timeout: 5000 });
+        reactionClickSuccess = true;
+        console.log("✅ Clicked Like reaction via locator");
+      } catch (e) {
+        console.log("⚠️ Locator click failed for reaction:", e.message);
+      }
+      
+      if (!reactionClickSuccess) {
+        try {
+          await page.evaluate(() => {
+            const btn = document.querySelector('[data-li-like-reaction="true"]');
+            if (btn) btn.click();
+          });
+          reactionClickSuccess = true;
+          console.log("✅ Clicked Like reaction via JavaScript");
+        } catch (e) {
+          console.log("⚠️ JS click failed for reaction:", e.message);
+        }
+      }
+      
+      if (!reactionClickSuccess) {
+        console.log("⚠️ Failed to click Like reaction");
+      }
+    }
+
+    // Wait for like to register
+    console.log("⏳ Waiting for like to register...");
+    await page.waitForTimeout(3000);
+
+    // Verify like was successful
+    const verified = await page.evaluate(() => {
+      const buttons = Array.from(document.querySelectorAll("button"));
+
+      for (const btn of buttons) {
+        const ariaLabel = btn.getAttribute("aria-label") || "";
+        const isPressed = btn.getAttribute("aria-pressed") === "true";
+
+        // Check if button is now pressed or aria-label indicates reaction
+        if (
+          isPressed ||
+          ariaLabel.toLowerCase().includes("you reacted") ||
+          ariaLabel.toLowerCase().includes("unlike")
+        ) {
+          console.log("✅ Like verified:", ariaLabel);
+          return true;
+        }
+      }
+
+      return false;
+    });
+
+    if (verified) {
+      console.log("❤️ Like confirmed!");
+      return {
+        success: true,
+        message: "LinkedIn post liked successfully",
+        confirmed: true,
+        post_url: targetUrl,
+      };
+    } else {
+      console.warn("⚠️ Like clicked but verification uncertain");
+      return {
+        success: true,
+        message: "Like button clicked (verification pending)",
+        confirmed: false,
+        post_url: targetUrl,
+      };
+    }
+  } catch (error) {
+    console.error("❌ LinkedIn like error:", error.message);
+    
+    // Take error screenshot
+    try {
+      await page.screenshot({ path: 'linkedin_like_error.png', fullPage: true });
+      console.log("📸 Error screenshot saved");
+    } catch (e) {
+      // Ignore screenshot errors
+    }
+    
+    return {
+      success: false,
+      message: error.message,
+      post_url: targetUrl,
+    };
+  }
+}
+
+// Update likePost to include LinkedIn
 async function likePost(page, platform, targetUrl) {
   console.log(`❤️ Liking post on ${platform}...`);
 
@@ -4073,6 +4328,10 @@ async function likePost(page, platform, targetUrl) {
 
     if (platform === "youtube") {
       return await youtubeLike(page, targetUrl);
+    }
+
+    if (platform === "linkedin") {
+      return await linkedinLike(page, targetUrl);
     }
 
     return {
@@ -5562,7 +5821,311 @@ async function youtubeComment(page, targetUrl, commentText) {
   }
 }
 
-// Update commentOnPost to include YouTube
+async function linkedinComment(page, targetUrl, commentText) {
+  console.log("🔵 Commenting on LinkedIn...");
+  
+  if (!targetUrl) throw new Error("Target URL missing");
+  if (!commentText) throw new Error("Comment text missing");
+
+  try {
+    // Navigate to post
+    console.log(`🔵 Navigating to: ${targetUrl}`);
+    await page.goto(targetUrl, {
+      waitUntil: "networkidle",
+      timeout: 60000,
+    });
+
+    console.log("⏳ LinkedIn post loaded, waiting...");
+    await page.waitForTimeout(4000);
+
+    // Scroll to ensure post is in view
+    console.log("📜 Scrolling to post...");
+    await page.evaluate(() => {
+      window.scrollBy(0, 300);
+    });
+    await page.waitForTimeout(2000);
+
+    // Click the Comment button to open comment box
+    console.log("🔍 Looking for Comment button to open comment box...");
+    const commentButtonClicked = await page.evaluate(() => {
+      const buttons = Array.from(document.querySelectorAll("button"));
+      for (const btn of buttons) {
+        const ariaLabel = btn.getAttribute("aria-label") || "";
+        const text = btn.textContent?.trim() || "";
+        
+        // Look for the button that opens the comment box (not the submit button)
+        if (
+          ariaLabel.toLowerCase().includes("comment on") ||
+          ariaLabel.toLowerCase().includes("add a comment") ||
+          (text === "Comment" && !btn.closest('form') && !btn.closest('[class*="comment-box"]'))
+        ) {
+          console.log("✅ Found Comment button to open box:", ariaLabel || text);
+          btn.click();
+          return true;
+        }
+      }
+      return false;
+    });
+
+    if (!commentButtonClicked) {
+      console.log("⚠️ Comment button not found, checking if comment box already visible...");
+    } else {
+      console.log("✅ Clicked Comment button");
+      await page.waitForTimeout(2000);
+    }
+
+    // Find and focus comment box
+    console.log("🔍 Looking for comment box...");
+    const commentBoxSelector = await page.evaluate(() => {
+      const editableBoxes = Array.from(
+        document.querySelectorAll(
+          'div[contenteditable="true"], div[role="textbox"]'
+        )
+      );
+
+      for (const box of editableBoxes) {
+        const ariaLabel = box.getAttribute("aria-label") || "";
+        const placeholder = box.getAttribute("data-placeholder") || "";
+        const classList = box.className || "";
+
+        if (
+          ariaLabel.toLowerCase().includes("comment") ||
+          ariaLabel.toLowerCase().includes("add a comment") ||
+          placeholder.toLowerCase().includes("comment") ||
+          classList.includes("ql-editor") ||
+          classList.includes("editor-content")
+        ) {
+          const rect = box.getBoundingClientRect();
+          if (rect.width > 0 && rect.height > 0) {
+            console.log("✅ Found visible comment box");
+            box.setAttribute("data-li-comment-box", "true");
+            box.scrollIntoView({ behavior: "smooth", block: "center" });
+            return true;
+          }
+        }
+      }
+      return false;
+    });
+
+    if (!commentBoxSelector) {
+      throw new Error("Comment box not found");
+    }
+
+    console.log("✅ Found comment box");
+    await page.waitForTimeout(1500);
+
+    // Click and type in comment box using Playwright
+    console.log("📝 Typing comment...");
+    const commentBox = page.locator('[data-li-comment-box="true"]').first();
+    await commentBox.click();
+    await page.waitForTimeout(1000);
+    
+    // Clear any existing text
+    await commentBox.fill('');
+    await page.waitForTimeout(500);
+    
+    // Type the comment
+    await commentBox.fill(commentText);
+    await page.waitForTimeout(1500);
+
+    console.log(`✅ Comment typed: "${commentText}"`);
+
+    // Wait for Comment submit button to become enabled
+    console.log("🔍 Waiting for Comment submit button to be enabled...");
+    await page.waitForTimeout(2000);
+
+    // Find the SUBMIT Comment button (the blue button that says "Comment")
+    console.log("🔍 Looking for Comment submit button...");
+    
+    // Strategy 1: Try common selectors for the submit button
+    let submitButton = null;
+    const selectors = [
+      'button.comments-comment-box__submit-button',
+      'button[type="submit"]',
+      'form button:has-text("Comment")',
+      '.comments-comment-box button:has-text("Comment")'
+    ];
+
+    for (const selector of selectors) {
+      try {
+        const btn = page.locator(selector).first();
+        const isVisible = await btn.isVisible({ timeout: 2000 });
+        if (isVisible) {
+          const isEnabled = await btn.isEnabled();
+          if (isEnabled) {
+            submitButton = btn;
+            console.log(`✅ Found Comment submit button with selector: ${selector}`);
+            break;
+          }
+        }
+      } catch (e) {
+        // Continue to next selector
+      }
+    }
+
+    // Strategy 2: Use evaluate to find the submit button
+    if (!submitButton) {
+      const buttonFound = await page.evaluate(() => {
+        const buttons = Array.from(document.querySelectorAll("button"));
+        for (const btn of buttons) {
+          const text = btn.textContent?.trim() || "";
+          const ariaLabel = btn.getAttribute("aria-label") || "";
+          const classList = btn.className || "";
+          
+          // Look for the blue "Comment" submit button
+          // It's inside the comment box form/container
+          if (text === "Comment" && 
+              (btn.closest('form') || 
+               btn.closest('[class*="comment-box"]') ||
+               classList.includes("comments-comment-box__submit-button"))) {
+            
+            const isDisabled = btn.hasAttribute("disabled") || btn.disabled;
+            const rect = btn.getBoundingClientRect();
+            
+            if (!isDisabled && rect.width > 0 && rect.height > 0) {
+              console.log("✅ Found enabled Comment submit button");
+              btn.setAttribute("data-li-submit-btn", "true");
+              btn.scrollIntoView({ behavior: "smooth", block: "center" });
+              return true;
+            }
+          }
+        }
+        return false;
+      });
+
+      if (buttonFound) {
+        await page.waitForTimeout(1000);
+        submitButton = page.locator('[data-li-submit-btn="true"]').first();
+      }
+    }
+
+    if (!submitButton) {
+      throw new Error("Comment submit button not found or not enabled");
+    }
+
+    console.log("✅ Found Comment submit button, clicking...");
+    await page.waitForTimeout(500);
+
+    // Try multiple click methods
+    let clickSuccess = false;
+
+    // Method 1: Playwright click
+    try {
+      await submitButton.click({ timeout: 5000, force: false });
+      clickSuccess = true;
+      console.log("✅ Clicked Comment submit button (Playwright)");
+    } catch (e) {
+      console.log("⚠️ Playwright click failed:", e.message);
+    }
+
+    // Method 2: Force click if normal click failed
+    if (!clickSuccess) {
+      try {
+        await submitButton.click({ force: true, timeout: 5000 });
+        clickSuccess = true;
+        console.log("✅ Clicked Comment submit button (force)");
+      } catch (e) {
+        console.log("⚠️ Force click failed:", e.message);
+      }
+    }
+
+    // Method 3: JavaScript click
+    if (!clickSuccess) {
+      try {
+        await page.evaluate(() => {
+          const btn = document.querySelector('[data-li-submit-btn="true"]') ||
+                      document.querySelector('button.comments-comment-box__submit-button');
+          if (btn) {
+            btn.click();
+          } else {
+            throw new Error("Button not found in DOM");
+          }
+        });
+        clickSuccess = true;
+        console.log("✅ Clicked Comment submit button (JavaScript)");
+      } catch (e) {
+        console.log("⚠️ JavaScript click failed:", e.message);
+      }
+    }
+
+    // Method 4: Dispatch click event
+    if (!clickSuccess) {
+      try {
+        await page.evaluate(() => {
+          const btn = document.querySelector('[data-li-submit-btn="true"]') ||
+                      document.querySelector('button.comments-comment-box__submit-button');
+          if (btn) {
+            btn.dispatchEvent(new MouseEvent('click', {
+              view: window,
+              bubbles: true,
+              cancelable: true
+            }));
+          }
+        });
+        clickSuccess = true;
+        console.log("✅ Clicked Comment submit button (event dispatch)");
+      } catch (e) {
+        console.log("⚠️ Event dispatch failed:", e.message);
+      }
+    }
+
+    if (!clickSuccess) {
+      // Take a screenshot for debugging
+      await page.screenshot({ path: 'linkedin_comment_error.png', fullPage: true });
+      throw new Error("Failed to click Comment submit button with all methods");
+    }
+
+    console.log("⏳ Waiting for comment to post...");
+    await page.waitForTimeout(5000);
+
+    // Verify comment was posted
+    console.log("🔍 Verifying comment...");
+    const verified = await page.evaluate((text) => {
+      // Check if comment appears in the page
+      const comments = Array.from(document.querySelectorAll('.comments-comment-item'));
+      for (const comment of comments) {
+        if (comment.innerText.includes(text)) {
+          return true;
+        }
+      }
+      // Fallback: check entire body
+      return document.body.innerText.includes(text);
+    }, commentText);
+
+    if (verified) {
+      console.log("✅ LinkedIn comment posted successfully!");
+    } else {
+      console.log("⚠️ Comment may have posted but verification uncertain");
+    }
+
+    return {
+      success: true,
+      message: "LinkedIn comment posted successfully",
+      verified: verified,
+      post_url: targetUrl,
+      comment: commentText,
+    };
+
+  } catch (error) {
+    console.error("❌ LinkedIn comment failed:", error.message);
+    
+    // Take error screenshot
+    try {
+      await page.screenshot({ path: 'linkedin_comment_error.png', fullPage: true });
+      console.log("📸 Error screenshot saved");
+    } catch (e) {
+      // Ignore screenshot errors
+    }
+
+    return {
+      success: false,
+      message: error.message,
+      post_url: targetUrl,
+    };
+  }
+}
+
+// Update commentOnPost to include LinkedIn
 async function commentOnPost(page, platform, targetUrl, commentText) {
   try {
     if (platform === "tiktok") {
@@ -5579,6 +6142,9 @@ async function commentOnPost(page, platform, targetUrl, commentText) {
     }
     if (platform === "youtube") {
       return await youtubeComment(page, targetUrl, commentText);
+    }
+    if (platform === "linkedin") {
+      return await linkedinComment(page, targetUrl, commentText);
     }
 
     return {
@@ -7593,7 +8159,259 @@ async function youtubeUnfollow(page, targetUrl) {
   }
 }
 
-// Update unfollowUser to include YouTube
+async function linkedinUnfollow(page, targetUrl) {
+  console.log("🔵 Processing LinkedIn unfollow...");
+
+  try {
+    if (!targetUrl) throw new Error("Target URL missing");
+
+    // Navigate to the profile
+    console.log(`🔵 Navigating to: ${targetUrl}`);
+    await page.goto(targetUrl, {
+      waitUntil: "networkidle",
+      timeout: 60000,
+    });
+
+    console.log("⏳ LinkedIn profile loaded, waiting...");
+    await page.waitForTimeout(4000);
+
+    console.log("🔍 Looking for More button...");
+
+    // Try multiple selectors for More button
+    const moreButtonClicked = await page.evaluate(() => {
+      // Method 1: Look for button with "More" text
+      const buttons = Array.from(document.querySelectorAll("button"));
+      
+      for (const btn of buttons) {
+        const text = btn.textContent?.trim() || "";
+        const ariaLabel = btn.getAttribute("aria-label") || "";
+        
+        // Check for "More" button
+        if (
+          text === "More" ||
+          text.includes("More") ||
+          ariaLabel.includes("More actions") ||
+          ariaLabel.includes("More")
+        ) {
+          console.log("✅ Found More button:", text || ariaLabel);
+          btn.click();
+          return true;
+        }
+      }
+
+      // Method 2: Look for button with specific classes (LinkedIn uses specific class patterns)
+      const moreButtons = document.querySelectorAll(
+        'button[aria-label*="More"], button.artdeco-dropdown__trigger'
+      );
+      
+      for (const btn of moreButtons) {
+        console.log("✅ Found More button via selector");
+        btn.click();
+        return true;
+      }
+
+      // Method 3: Look for overflow menu button
+      const overflowBtns = document.querySelectorAll(
+        'button[data-control-name*="overflow"]'
+      );
+      
+      for (const btn of overflowBtns) {
+        console.log("✅ Found overflow menu button");
+        btn.click();
+        return true;
+      }
+
+      return false;
+    });
+
+    if (!moreButtonClicked) {
+      console.log("⚠️ More button not found, trying alternative approach...");
+      
+      // Alternative: Try to find and click by position or other attributes
+      const alternativeClick = await page.evaluate(() => {
+        const allButtons = document.querySelectorAll("button");
+        
+        for (const btn of allButtons) {
+          const spans = btn.querySelectorAll("span");
+          for (const span of spans) {
+            if (span.textContent?.trim() === "More") {
+              console.log("✅ Found More button in span");
+              btn.click();
+              return true;
+            }
+          }
+        }
+        return false;
+      });
+      
+      if (!alternativeClick) {
+        throw new Error("More button not found with any method");
+      }
+    }
+
+    console.log("⏳ Waiting for dropdown menu...");
+    await page.waitForTimeout(2000);
+
+    // Find and click Unfollow option
+    console.log("🔍 Looking for Unfollow option in dropdown...");
+
+    const unfollowClicked = await page.evaluate(() => {
+      // Look in dropdown menu items
+      const menuItems = Array.from(
+        document.querySelectorAll(
+          'div[role="menuitem"], li[role="menuitem"], button, div.artdeco-dropdown__item, span'
+        )
+      );
+
+      for (const item of menuItems) {
+        const text = item.textContent?.trim() || "";
+        const ariaLabel = item.getAttribute("aria-label") || "";
+
+        if (
+          text === "Unfollow" ||
+          text.includes("Unfollow") ||
+          ariaLabel.includes("Unfollow")
+        ) {
+          console.log("✅ Found Unfollow option:", text);
+          
+          // Try to click the element or its parent
+          if (item.tagName === "BUTTON" || item.tagName === "DIV") {
+            item.click();
+          } else {
+            // If it's a span, click the parent
+            const parent = item.closest("button, div[role='menuitem'], li[role='menuitem']");
+            if (parent) {
+              parent.click();
+            } else {
+              item.click();
+            }
+          }
+          return true;
+        }
+      }
+
+      return false;
+    });
+
+    if (!unfollowClicked) {
+      throw new Error("Unfollow option not found in dropdown menu");
+    }
+
+    console.log("⏳ Waiting for confirmation dialog...");
+    await page.waitForTimeout(2000);
+
+    // Look for confirmation dialog and click Unfollow button
+    console.log("🔍 Looking for confirmation button...");
+
+    const confirmClicked = await page.evaluate(() => {
+      // Look for confirmation dialog
+      const buttons = Array.from(document.querySelectorAll("button"));
+
+      for (const btn of buttons) {
+        const text = btn.textContent?.trim() || "";
+        const ariaLabel = btn.getAttribute("aria-label") || "";
+
+        // Look for "Unfollow" confirmation button in dialog
+        if (
+          (text === "Unfollow" || text.includes("Unfollow")) &&
+          !text.includes("Don't")
+        ) {
+          console.log("✅ Found confirmation button:", text);
+          btn.click();
+          return true;
+        }
+      }
+
+      // Alternative: Look for primary button in dialog
+      const dialogButtons = document.querySelectorAll(
+        'div[role="dialog"] button, .artdeco-modal button'
+      );
+      
+      for (const btn of dialogButtons) {
+        const text = btn.textContent?.trim() || "";
+        if (text === "Unfollow") {
+          console.log("✅ Found Unfollow in dialog");
+          btn.click();
+          return true;
+        }
+      }
+
+      return false;
+    });
+
+    if (confirmClicked) {
+      console.log("✅ Clicked confirmation button");
+    } else {
+      console.log("ℹ️ No confirmation dialog found (may not be required)");
+    }
+
+    console.log("⏳ Waiting for action to complete...");
+    await page.waitForTimeout(3000);
+
+    // Verify unfollow success
+    console.log("🔍 Verifying unfollow...");
+
+    const verified = await page.evaluate(() => {
+      // Check if "Follow" button now appears
+      const buttons = Array.from(document.querySelectorAll("button"));
+
+      for (const btn of buttons) {
+        const text = btn.textContent?.trim() || "";
+        const ariaLabel = btn.getAttribute("aria-label") || "";
+
+        if (
+          text === "Follow" ||
+          (ariaLabel.includes("Follow") && 
+           !ariaLabel.includes("Following") && 
+           !ariaLabel.includes("Unfollow"))
+        ) {
+          console.log("✅ Verified - Follow button now visible");
+          return true;
+        }
+      }
+
+      // Alternative verification: Check if "Following" or "Unfollow" is gone
+      const hasFollowing = buttons.some(btn => {
+        const text = btn.textContent?.trim() || "";
+        return text === "Following";
+      });
+
+      if (!hasFollowing) {
+        console.log("✅ Verified - Following button is gone");
+        return true;
+      }
+
+      return false;
+    });
+
+    if (verified) {
+      console.log("✅ LinkedIn unfollow successful!");
+      return {
+        success: true,
+        message: "Profile unfollowed successfully",
+        verified: true,
+        profile_url: targetUrl,
+      };
+    } else {
+      console.log("⚠️ Unfollow completed but verification uncertain");
+      return {
+        success: true,
+        message: "Unfollow action completed",
+        verified: false,
+        profile_url: targetUrl,
+      };
+    }
+  } catch (error) {
+    console.error("❌ LinkedIn unfollow failed:", error.message);
+    return {
+      success: false,
+      message: error.message,
+      profile_url: targetUrl,
+    };
+  }
+}
+
+// Updated unfollowUser function
 async function unfollowUser(page, platform, targetUrl) {
   console.log(`🚫 Unfollowing user on ${platform}...`);
 
@@ -7616,6 +8434,10 @@ async function unfollowUser(page, platform, targetUrl) {
 
     if (platform === "youtube") {
       return await youtubeUnfollow(page, targetUrl);
+    }
+
+    if (platform === "linkedin") {
+      return await linkedinUnfollow(page, targetUrl);
     }
 
     return {
@@ -7652,29 +8474,6 @@ app.post("/stop-scroll", async (req, res) => {
   });
 });
 
-// --------------- GET SCROLL BOT STATUS -------------------
-app.post("/stop-scroll", async (req, res) => {
-  const { account_id } = req.body;
-
-  if (!account_id) {
-    return res.json({ success: false, message: "account_id required" });
-  }
-
-  if (activeScrollBots[account_id]) {
-    activeScrollBots[account_id].shouldStop = true;
-    console.log(`🛑 Stop signal sent to scroll bot for account ${account_id}`);
-
-    return res.json({
-      success: true,
-      message: "Stop signal sent. Bot will stop after current action.",
-    });
-  }
-
-  return res.json({
-    success: false,
-    message: "No active scroll bot found for this account",
-  });
-});
 
 // --------------- GET SCROLL BOT STATUS -------------------
 app.post("/scroll-status", async (req, res) => {
@@ -9376,21 +10175,6 @@ async function tiktokScrollBot(page, accountId, options = {}) {
     };
   }
 }
-//auth token
-// function extractAuthToken(cookies, platform) {
-//   const tokenMap = {
-//     instagram: "sessionid",
-//     facebook: "c_user",
-//     twitter: "auth_token",
-//     linkedin: "li_at",
-//     youtube: "SAPISID",
-//     tiktok: ['sessionid', 'tt_webid', 'tt_webid_v2', 'sid_tt'],
-//   };
-
-//   const tokenName = tokenMap[platform];
-//   const cookie = cookies.find((c) => c.name === tokenName);
-//   return cookie ? cookie.value : null;
-// }
 async function youtubeScrollBot(page, accountId, options = {}) {
   console.log("🔴 YouTube Shorts UNLIMITED scroll bot started...");
 
