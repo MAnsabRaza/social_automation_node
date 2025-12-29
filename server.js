@@ -732,10 +732,10 @@ async function createLinkedInPost(page, postContent) {
     // ============================================
     console.log("📍 STEP 3: Opening post dialog...");
     console.log("   🔍 Looking for 'Start a post' button...");
-    
+
     const startPostSelectors = [
       'button:has-text("Start a post")',
-      '.share-box-feed-entry__trigger',
+      ".share-box-feed-entry__trigger",
       'button[aria-label*="Start a post"]',
     ];
 
@@ -743,7 +743,10 @@ async function createLinkedInPost(page, postContent) {
     for (const selector of startPostSelectors) {
       try {
         console.log(`   ⚡ Trying: ${selector}`);
-        await page.waitForSelector(selector, { state: "visible", timeout: 5000 });
+        await page.waitForSelector(selector, {
+          state: "visible",
+          timeout: 5000,
+        });
         await page.click(selector);
         console.log(`   ✅ CLICKED: ${selector}`);
         postDialogOpened = true;
@@ -765,14 +768,15 @@ async function createLinkedInPost(page, postContent) {
     // ============================================
     console.log("📍 STEP 4: Adding text content...");
     const editor = '.ql-editor[contenteditable="true"]';
-    
+
     console.log(`   🔍 Waiting for editor: ${editor}`);
     await page.waitForSelector(editor, { state: "visible", timeout: 10000 });
     console.log("   ✅ Editor found");
-    
-    const postText = (postContent.content || "") + "\n\n" + (postContent.hashtags || "");
+
+    const postText =
+      (postContent.content || "") + "\n\n" + (postContent.hashtags || "");
     console.log(`   📝 Text to add: "${postText}"`);
-    
+
     await page.fill(editor, postText.trim());
     console.log("   ✅ FILLED TEXT IN EDITOR");
     await page.waitForTimeout(2000);
@@ -782,17 +786,24 @@ async function createLinkedInPost(page, postContent) {
     // STEP 5: UPLOAD MEDIA (CRITICAL STEP!)
     // ============================================
     let mediaUploaded = false;
-    
+
     if (postContent.media_urls) {
       console.log("📍 STEP 5: UPLOADING MEDIA...");
       console.log("=".repeat(80));
-      
+
       // Build file paths
       const possiblePaths = [
-        path.join('C:', 'wamp64', 'www', 'social-automation', 'public', postContent.media_urls),
-        path.join(process.cwd(), 'public', postContent.media_urls),
+        path.join(
+          "C:",
+          "wamp64",
+          "www",
+          "social-automation",
+          "public",
+          postContent.media_urls
+        ),
+        path.join(process.cwd(), "public", postContent.media_urls),
         path.join(process.cwd(), postContent.media_urls),
-        path.join(__dirname, '..', 'public', postContent.media_urls),
+        path.join(__dirname, "..", "public", postContent.media_urls),
       ];
 
       let absoluteMediaPath = null;
@@ -813,17 +824,21 @@ async function createLinkedInPost(page, postContent) {
         console.log("   ⚠️ Continuing without media\n");
       } else {
         console.log(`\n   📁 Using file: ${absoluteMediaPath}\n`);
-        
+
         // CLICK PHOTO BUTTON
         console.log("   🔍 Step 5a: Looking for 'Add a photo' button...");
         await page.waitForTimeout(2000);
-        
+
         let photoButtonClicked = false;
-        
+
         // Method 1: Direct selector
         try {
-          console.log("   ⚡ Method 1: Trying button[aria-label='Add a photo']");
-          const photoBtn = page.locator('button[aria-label="Add a photo"]').first();
+          console.log(
+            "   ⚡ Method 1: Trying button[aria-label='Add a photo']"
+          );
+          const photoBtn = page
+            .locator('button[aria-label="Add a photo"]')
+            .first();
           await photoBtn.waitFor({ state: "visible", timeout: 5000 });
           await photoBtn.click();
           console.log("   ✅ CLICKED PHOTO BUTTON (Method 1)");
@@ -834,24 +849,33 @@ async function createLinkedInPost(page, postContent) {
 
         // Method 2: Search all buttons
         if (!photoButtonClicked) {
-          console.log("\n   ⚡ Method 2: Searching all buttons for 'photo' in aria-label...");
+          console.log(
+            "\n   ⚡ Method 2: Searching all buttons for 'photo' in aria-label..."
+          );
           try {
-            const allButtons = await page.$$('button');
+            const allButtons = await page.$$("button");
             console.log(`   📊 Found ${allButtons.length} buttons on page`);
-            
+
             for (let i = 0; i < allButtons.length; i++) {
               const btn = allButtons[i];
-              const ariaLabel = await btn.getAttribute('aria-label').catch(() => null);
+              const ariaLabel = await btn
+                .getAttribute("aria-label")
+                .catch(() => null);
               const isVisible = await btn.isVisible().catch(() => false);
-              
+
               if (ariaLabel) {
-                console.log(`      Button ${i}: "${ariaLabel}" (visible: ${isVisible})`);
+                console.log(
+                  `      Button ${i}: "${ariaLabel}" (visible: ${isVisible})`
+                );
               }
-              
-              if (isVisible && ariaLabel && 
-                  (ariaLabel.toLowerCase().includes('photo') || 
-                   ariaLabel.toLowerCase().includes('image') ||
-                   ariaLabel.toLowerCase().includes('media'))) {
+
+              if (
+                isVisible &&
+                ariaLabel &&
+                (ariaLabel.toLowerCase().includes("photo") ||
+                  ariaLabel.toLowerCase().includes("image") ||
+                  ariaLabel.toLowerCase().includes("media"))
+              ) {
                 console.log(`   ✅ FOUND TARGET BUTTON: "${ariaLabel}"`);
                 await btn.click();
                 console.log(`   ✅ CLICKED BUTTON: "${ariaLabel}"`);
@@ -865,7 +889,9 @@ async function createLinkedInPost(page, postContent) {
         }
 
         if (!photoButtonClicked) {
-          throw new Error("❌ COULD NOT FIND PHOTO BUTTON - Media upload aborted");
+          throw new Error(
+            "❌ COULD NOT FIND PHOTO BUTTON - Media upload aborted"
+          );
         }
 
         // WAIT FOR FILE INPUT
@@ -877,7 +903,7 @@ async function createLinkedInPost(page, postContent) {
         try {
           const fileInputs = await page.$$('input[type="file"]');
           console.log(`   📊 Found ${fileInputs.length} file inputs`);
-          
+
           if (fileInputs.length === 0) {
             throw new Error("No file input found after clicking photo button");
           }
@@ -898,23 +924,26 @@ async function createLinkedInPost(page, postContent) {
           if (!fileSet) {
             throw new Error("Could not set file on any input");
           }
-
         } catch (e) {
           console.log("   ❌ File upload error:", e.message);
           throw e;
         }
 
         // WAIT FOR PROCESSING
-        console.log("\n   ⏳ Step 5d: Waiting for media to process (15 seconds)...");
+        console.log(
+          "\n   ⏳ Step 5d: Waiting for media to process (15 seconds)..."
+        );
         await page.waitForTimeout(15000);
 
         // ============================================
         // STEP 5e: CLICK "NEXT" IN MEDIA EDITOR
         // ============================================
-        console.log("\n   🔍 Step 5e: Looking for Next button in media editor...");
-        
+        console.log(
+          "\n   🔍 Step 5e: Looking for Next button in media editor..."
+        );
+
         const nextButtonSelectors = [
-          'button.share-media-editor__action-button--primary',
+          "button.share-media-editor__action-button--primary",
           'button.artdeco-button--primary:has-text("Next")',
           'button[aria-label*="Next"]',
           'button:has-text("Next")',
@@ -927,7 +956,7 @@ async function createLinkedInPost(page, postContent) {
             console.log(`      ⚡ Trying: ${selector}`);
             const nextBtn = page.locator(selector).first();
             await nextBtn.waitFor({ state: "visible", timeout: 5000 });
-            
+
             // Wait for button to be enabled
             let waitCount = 0;
             while (waitCount < 10) {
@@ -936,7 +965,7 @@ async function createLinkedInPost(page, postContent) {
               await page.waitForTimeout(1000);
               waitCount++;
             }
-            
+
             await nextBtn.click();
             console.log(`      ✅ CLICKED NEXT BUTTON: ${selector}`);
             nextClicked = true;
@@ -948,14 +977,14 @@ async function createLinkedInPost(page, postContent) {
 
         if (!nextClicked) {
           console.log("      ⚠️ Next button not found, trying fallback...");
-          
+
           // Fallback: Search all buttons
-          const allButtons = await page.$$('button');
+          const allButtons = await page.$$("button");
           for (const btn of allButtons) {
-            const text = await btn.textContent().catch(() => '');
+            const text = await btn.textContent().catch(() => "");
             const isVisible = await btn.isVisible().catch(() => false);
-            
-            if (isVisible && text.trim().toLowerCase() === 'next') {
+
+            if (isVisible && text.trim().toLowerCase() === "next") {
               console.log(`      ✅ Found Next via fallback`);
               await btn.click();
               nextClicked = true;
@@ -965,7 +994,9 @@ async function createLinkedInPost(page, postContent) {
         }
 
         if (!nextClicked) {
-          console.log("      ⚠️ Could not find Next button - may already be on final screen");
+          console.log(
+            "      ⚠️ Could not find Next button - may already be on final screen"
+          );
         }
 
         await page.waitForTimeout(3000);
@@ -974,7 +1005,7 @@ async function createLinkedInPost(page, postContent) {
         // STEP 5f: CLICK "DONE" IF EDITING SCREEN APPEARS
         // ============================================
         console.log("\n   🔍 Step 5f: Checking for Done/Apply button...");
-        
+
         const doneButtonSelectors = [
           'button:has-text("Done")',
           'button:has-text("Apply")',
@@ -1017,23 +1048,26 @@ async function createLinkedInPost(page, postContent) {
     // ============================================
     console.log("📍 STEP 6: Configuring post settings...");
     console.log("=".repeat(80));
-    
+
     // Wait for main post composition screen to be ready
     await page.waitForTimeout(2000);
-    
+
     console.log("   🔍 Looking for settings button...");
     const settingsSelectors = [
       'button[aria-label*="settings"]',
       'button[aria-label*="Post settings"]',
       'button[aria-label*="Open settings"]',
-      '.share-creation-state__settings-button',
+      ".share-creation-state__settings-button",
     ];
 
     let settingsOpened = false;
     for (const selector of settingsSelectors) {
       try {
         console.log(`   ⚡ Trying: ${selector}`);
-        await page.waitForSelector(selector, { state: "visible", timeout: 3000 });
+        await page.waitForSelector(selector, {
+          state: "visible",
+          timeout: 3000,
+        });
         await page.click(selector);
         console.log(`   ✅ CLICKED SETTINGS BUTTON: ${selector}`);
         settingsOpened = true;
@@ -1044,7 +1078,9 @@ async function createLinkedInPost(page, postContent) {
     }
 
     if (!settingsOpened) {
-      console.log("   ⚠️ Settings button not found - skipping brand partnership");
+      console.log(
+        "   ⚠️ Settings button not found - skipping brand partnership"
+      );
       console.log("=".repeat(80) + "\n");
     } else {
       await page.waitForTimeout(2000);
@@ -1053,31 +1089,42 @@ async function createLinkedInPost(page, postContent) {
       // ENABLE BRAND PARTNERSHIP
       console.log("   🤝 Looking for Brand Partnership toggle...");
       try {
-        await page.waitForSelector('div[role="dialog"]', { state: "visible", timeout: 5000 });
+        await page.waitForSelector('div[role="dialog"]', {
+          state: "visible",
+          timeout: 5000,
+        });
 
-        const toggleButtons = await page.$$('button.artdeco-toggle__button');
+        const toggleButtons = await page.$$("button.artdeco-toggle__button");
         console.log(`   📊 Found ${toggleButtons.length} toggle buttons`);
 
         let brandToggled = false;
         for (let i = 0; i < toggleButtons.length; i++) {
           const toggle = toggleButtons[i];
-          const ariaLabel = await toggle.getAttribute('aria-label').catch(() => '');
-          const ariaChecked = await toggle.getAttribute('aria-checked').catch(() => 'unknown');
-          
-          console.log(`      Toggle ${i + 1}: "${ariaLabel}" (checked: ${ariaChecked})`);
+          const ariaLabel = await toggle
+            .getAttribute("aria-label")
+            .catch(() => "");
+          const ariaChecked = await toggle
+            .getAttribute("aria-checked")
+            .catch(() => "unknown");
 
-          if (ariaLabel.toLowerCase().includes('brand')) {
+          console.log(
+            `      Toggle ${i + 1}: "${ariaLabel}" (checked: ${ariaChecked})`
+          );
+
+          if (ariaLabel.toLowerCase().includes("brand")) {
             console.log(`      ✅ FOUND BRAND PARTNERSHIP TOGGLE`);
-            
-            if (ariaChecked === 'false') {
+
+            if (ariaChecked === "false") {
               console.log(`      ⚡ Clicking to enable...`);
               await toggle.click();
               await page.waitForTimeout(1000);
-              
-              const newState = await toggle.getAttribute('aria-checked');
-              console.log(`      ✅ BRAND PARTNERSHIP ENABLED (new state: ${newState})`);
+
+              const newState = await toggle.getAttribute("aria-checked");
+              console.log(
+                `      ✅ BRAND PARTNERSHIP ENABLED (new state: ${newState})`
+              );
               brandToggled = true;
-            } else if (ariaChecked === 'true') {
+            } else if (ariaChecked === "true") {
               console.log(`      ℹ️ Already enabled`);
               brandToggled = true;
             }
@@ -1088,7 +1135,6 @@ async function createLinkedInPost(page, postContent) {
         if (!brandToggled) {
           console.log("   ⚠️ Brand Partnership toggle not found");
         }
-
       } catch (e) {
         console.log("   ⚠️ Error toggling brand partnership:", e.message);
       }
@@ -1096,14 +1142,14 @@ async function createLinkedInPost(page, postContent) {
       // CLOSE SETTINGS
       console.log("\n   🔍 Closing settings dialog...");
       await page.waitForTimeout(1500);
-      
+
       try {
         console.log("   ⚡ Clicking 'Done' button...");
         await page.click('button:has-text("Done")', { timeout: 5000 });
         console.log("   ✅ CLICKED DONE BUTTON");
       } catch (e) {
         console.log("   ❌ Done button not found, pressing Escape");
-        await page.keyboard.press('Escape');
+        await page.keyboard.press("Escape");
       }
 
       await page.waitForTimeout(2000);
@@ -1118,15 +1164,15 @@ async function createLinkedInPost(page, postContent) {
     console.log("=".repeat(80));
 
     console.log("   🔍 Looking for Post button...");
-    
+
     // Multiple selectors for the final Post button
     const postButtonSelectors = [
-      'button.share-actions__primary-action',
+      "button.share-actions__primary-action",
       'button[aria-label*="Post"]',
       'button.artdeco-button--primary:has-text("Post")',
       '.share-creation-state button:has-text("Post")',
     ];
-    
+
     let postButtonFound = false;
     let postButtonSelector = null;
 
@@ -1147,15 +1193,20 @@ async function createLinkedInPost(page, postContent) {
     if (!postButtonFound) {
       // Fallback: Search all buttons
       console.log("   🔍 Fallback: Searching all buttons...");
-      const allButtons = await page.$$('button');
-      
+      const allButtons = await page.$$("button");
+
       for (const btn of allButtons) {
-        const text = await btn.textContent().catch(() => '');
-        const ariaLabel = await btn.getAttribute('aria-label').catch(() => '');
+        const text = await btn.textContent().catch(() => "");
+        const ariaLabel = await btn.getAttribute("aria-label").catch(() => "");
         const isVisible = await btn.isVisible().catch(() => false);
-        
-        if (isVisible && (text.trim() === 'Post' || ariaLabel.includes('Post'))) {
-          console.log(`   ✅ Found Post button via fallback: "${text || ariaLabel}"`);
+
+        if (
+          isVisible &&
+          (text.trim() === "Post" || ariaLabel.includes("Post"))
+        ) {
+          console.log(
+            `   ✅ Found Post button via fallback: "${text || ariaLabel}"`
+          );
           await btn.click();
           postButtonFound = true;
           break;
@@ -1167,14 +1218,16 @@ async function createLinkedInPost(page, postContent) {
       let waitAttempts = 0;
       while (waitAttempts < 25) {
         const postBtn = await page.$(postButtonSelector);
-        const isDisabled = await postBtn.getAttribute('disabled');
-        
+        const isDisabled = await postBtn.getAttribute("disabled");
+
         if (!isDisabled) {
           console.log("   ✅ Post button is ENABLED");
           break;
         }
-        
-        console.log(`   ⏳ Post button disabled, waiting... (${waitAttempts + 1}/25)`);
+
+        console.log(
+          `   ⏳ Post button disabled, waiting... (${waitAttempts + 1}/25)`
+        );
         await page.waitForTimeout(2000);
         waitAttempts++;
       }
@@ -1194,19 +1247,27 @@ async function createLinkedInPost(page, postContent) {
 
     // Verify success
     console.log("   🔍 Verifying post was published...");
-    const modalStillVisible = await page.isVisible('.share-creation-state').catch(() => false);
-    
+    const modalStillVisible = await page
+      .isVisible(".share-creation-state")
+      .catch(() => false);
+
     if (!modalStillVisible) {
       console.log("   ✅ Post dialog closed - POST PUBLISHED SUCCESSFULLY");
     } else {
-      console.log("   ⚠️ Post dialog still visible - publication status unclear");
+      console.log(
+        "   ⚠️ Post dialog still visible - publication status unclear"
+      );
     }
 
     console.log("=".repeat(80));
-    
+
     const finalMessage = !modalStillVisible
-      ? `✅ POST PUBLISHED SUCCESSFULLY ${mediaUploaded ? '✅ WITH MEDIA' : '⚠️ WITHOUT MEDIA'}`
-      : `⚠️ POST STATUS UNCLEAR ${mediaUploaded ? '(media was uploaded)' : '(no media)'}`;
+      ? `✅ POST PUBLISHED SUCCESSFULLY ${
+          mediaUploaded ? "✅ WITH MEDIA" : "⚠️ WITHOUT MEDIA"
+        }`
+      : `⚠️ POST STATUS UNCLEAR ${
+          mediaUploaded ? "(media was uploaded)" : "(no media)"
+        }`;
 
     console.log("\n" + "=".repeat(80));
     console.log(finalMessage);
@@ -1217,7 +1278,6 @@ async function createLinkedInPost(page, postContent) {
       message: finalMessage,
       mediaUploaded: mediaUploaded,
     };
-
   } catch (error) {
     console.log("\n" + "=".repeat(80));
     console.error("❌ CRITICAL ERROR:", error.message);
@@ -1226,7 +1286,10 @@ async function createLinkedInPost(page, postContent) {
 
     // Save screenshot
     try {
-      const screenshotPath = path.join(process.cwd(), `linkedin-error-${Date.now()}.png`);
+      const screenshotPath = path.join(
+        process.cwd(),
+        `linkedin-error-${Date.now()}.png`
+      );
       await page.screenshot({ path: screenshotPath, fullPage: true });
       console.log(`📸 Error screenshot saved: ${screenshotPath}`);
     } catch (e) {
@@ -1240,7 +1303,6 @@ async function createLinkedInPost(page, postContent) {
     };
   }
 }
-
 
 async function createYouTubePost(page, postContent) {
   console.log("📺 Creating YouTube video...");
@@ -6153,202 +6215,433 @@ async function youtubeComment(page, targetUrl, commentText) {
     console.log(`📱 Video type: ${isShort ? "Short" : "Regular video"}`);
 
     if (isShort) {
-      // For Shorts - click comment button first
+      // ============================================
+      // SHORTS SPECIFIC LOGIC
+      // ============================================
       console.log("🔍 Looking for comment button on Short...");
 
-      const commentButtonFound = await page.evaluate(() => {
-        const buttons = Array.from(document.querySelectorAll("button"));
+      // Wait for the page to fully load
+      await page.waitForTimeout(2000);
 
-        for (const btn of buttons) {
-          const ariaLabel = btn.getAttribute("aria-label") || "";
+      // Method 1: Click comment button using aria-label
+      let commentPanelOpened = false;
 
-          // Find comment button (has comment count)
-          if (ariaLabel.toLowerCase().includes("comment")) {
-            console.log("Found comment button:", ariaLabel);
-            btn.setAttribute("data-yt-comment-icon", "true");
-            return true;
+      try {
+        console.log(
+          "⚡ Method 1: Looking for comment button via aria-label..."
+        );
+
+        const commentButtonSelector = 'button[aria-label*="Comment"]';
+        const commentButton = await page.$(commentButtonSelector);
+
+        if (commentButton) {
+          const ariaLabel = await commentButton.getAttribute("aria-label");
+          console.log(`   ✅ Found button with aria-label: "${ariaLabel}"`);
+
+          // Scroll button into view and click
+          await commentButton.scrollIntoViewIfNeeded();
+          await commentButton.click();
+          console.log("   ✅ Clicked comment button (Method 1)");
+          commentPanelOpened = true;
+        } else {
+          console.log("   ❌ Method 1 failed");
+        }
+      } catch (e) {
+        console.log("   ❌ Method 1 error:", e.message);
+      }
+
+      // Method 2: Search all buttons for comment icon
+      if (!commentPanelOpened) {
+        console.log("\n⚡ Method 2: Searching all buttons...");
+
+        const buttonFound = await page.evaluate(() => {
+          const buttons = Array.from(document.querySelectorAll("button"));
+          console.log(`Found ${buttons.length} buttons`);
+
+          for (let i = 0; i < buttons.length; i++) {
+            const btn = buttons[i];
+            const ariaLabel = btn.getAttribute("aria-label") || "";
+
+            // Log first 20 buttons for debugging
+            if (i < 20) {
+              console.log(`Button ${i}: "${ariaLabel}"`);
+            }
+
+            // Find comment button (contains "comment" in aria-label and has a count)
+            if (ariaLabel.toLowerCase().includes("comment")) {
+              console.log(`✅ Found comment button: "${ariaLabel}"`);
+              btn.setAttribute("data-yt-comment-icon", "true");
+              btn.scrollIntoView({ behavior: "smooth", block: "center" });
+              return true;
+            }
+          }
+
+          return false;
+        });
+
+        if (buttonFound) {
+          await page.waitForTimeout(1000);
+          await page.click('[data-yt-comment-icon="true"]');
+          console.log("   ✅ Clicked comment button (Method 2)");
+          commentPanelOpened = true;
+        } else {
+          console.log("   ❌ Method 2 failed");
+        }
+      }
+
+      if (!commentPanelOpened) {
+        throw new Error("Could not open comment panel on Short");
+      }
+
+      console.log("⏳ Waiting for comment panel to fully load...");
+      await page.waitForTimeout(4000);
+
+      // ============================================
+      // FIND COMMENT BOX IN SHORTS PANEL
+      // ============================================
+      console.log("🔍 Looking for comment input box in Shorts panel...");
+
+      // Shorts comment box has specific selectors
+      const shortsCommentBoxSelectors = [
+        "#simplebox-placeholder", // The actual input area
+        "#contenteditable-root", // The editable div inside
+        "ytd-commentbox #placeholder-area",
+        'div[id="contenteditable-root"][contenteditable="true"]',
+        'div[aria-label*="Add a comment"]',
+      ];
+
+      let commentBoxFound = false;
+      let commentBoxElement = null;
+
+      // Try each selector
+      for (const selector of shortsCommentBoxSelectors) {
+        try {
+          console.log(`   ⚡ Trying selector: ${selector}`);
+          commentBoxElement = await page.$(selector);
+
+          if (commentBoxElement) {
+            const isVisible = await commentBoxElement.isVisible();
+            console.log(`      Visible: ${isVisible}`);
+
+            if (isVisible) {
+              console.log(`   ✅ Found visible comment box: ${selector}`);
+              commentBoxFound = true;
+              break;
+            }
+          }
+        } catch (e) {
+          console.log(`   ❌ ${selector} failed:`, e.message);
+        }
+      }
+
+      // Fallback: Search all editable divs
+      if (!commentBoxFound) {
+        console.log("\n⚡ Fallback: Searching all editable elements...");
+
+        commentBoxFound = await page.evaluate(() => {
+          const editables = Array.from(
+            document.querySelectorAll(
+              'div[contenteditable="true"], div[contenteditable="plaintext-only"]'
+            )
+          );
+
+          console.log(`Found ${editables.length} editable elements`);
+
+          for (let i = 0; i < editables.length; i++) {
+            const box = editables[i];
+            const id = box.getAttribute("id") || "";
+            const ariaLabel = box.getAttribute("aria-label") || "";
+            const placeholder = box.getAttribute("aria-placeholder") || "";
+
+            console.log(`Editable ${i}:`, {
+              id,
+              ariaLabel,
+              placeholder,
+              visible: box.offsetParent !== null,
+            });
+
+            // Check if it's a comment box
+            if (
+              id.includes("simplebox") ||
+              id.includes("contenteditable-root") ||
+              ariaLabel.toLowerCase().includes("comment") ||
+              placeholder.toLowerCase().includes("comment")
+            ) {
+              // Check visibility
+              const rect = box.getBoundingClientRect();
+              if (rect.width > 0 && rect.height > 0) {
+                console.log(`✅ Found comment box: id="${id}"`);
+                box.setAttribute("data-yt-comment-box", "true");
+                box.scrollIntoView({ behavior: "smooth", block: "center" });
+                return true;
+              }
+            }
+          }
+
+          return false;
+        });
+
+        if (commentBoxFound) {
+          console.log("   ✅ Found comment box via fallback");
+          commentBoxElement = await page.$('[data-yt-comment-box="true"]');
+        }
+      }
+
+      if (!commentBoxFound || !commentBoxElement) {
+        throw new Error("Comment input box not found in Shorts panel");
+      }
+
+      console.log("✅ Comment box located");
+      await page.waitForTimeout(1000);
+
+      // ============================================
+      // CLICK AND TYPE IN COMMENT BOX
+      // ============================================
+      console.log("📝 Clicking comment box to focus...");
+
+      // Click the comment box area first
+      try {
+        // Try clicking the placeholder area
+        const placeholderArea = await page.$("#simplebox-placeholder");
+        if (placeholderArea) {
+          await placeholderArea.click();
+          console.log("   ✅ Clicked placeholder area");
+        }
+      } catch (e) {
+        console.log("   ⚠️ Could not click placeholder:", e.message);
+      }
+
+      await page.waitForTimeout(1500);
+
+      // Now find the actual contenteditable div
+      console.log("⌨️ Finding active input field...");
+
+      const activeInput = await page.$(
+        '#contenteditable-root[contenteditable="true"]'
+      );
+
+      if (!activeInput) {
+        throw new Error("Could not find active contenteditable input");
+      }
+
+      console.log("✅ Found active input, typing comment...");
+
+      // Focus the input
+      await activeInput.click();
+      await page.waitForTimeout(500);
+
+      // Type the comment
+      console.log(`⌨️ Typing: "${commentText}"`);
+      await activeInput.type(commentText, { delay: 80 });
+
+      console.log("✅ Comment typed successfully");
+      await page.waitForTimeout(2000);
+
+      // ============================================
+      // CLICK COMMENT SUBMIT BUTTON
+      // ============================================
+      console.log("🔍 Looking for Comment submit button...");
+
+      const submitButtonSelectors = [
+        "#submit-button button",
+        "ytd-button-renderer#submit-button button",
+        'button[aria-label="Comment"]',
+        'ytd-commentbox button[aria-label="Comment"]',
+      ];
+
+      let submitClicked = false;
+
+      // Try specific selectors first
+      for (const selector of submitButtonSelectors) {
+        try {
+          console.log(`   ⚡ Trying: ${selector}`);
+          const btn = await page.$(selector);
+
+          if (btn) {
+            const isVisible = await btn.isVisible();
+            const isDisabled = await btn.isDisabled();
+
+            console.log(`      Visible: ${isVisible}, Disabled: ${isDisabled}`);
+
+            if (isVisible && !isDisabled) {
+              await btn.click();
+              console.log(`   ✅ Clicked submit button: ${selector}`);
+              submitClicked = true;
+              break;
+            }
+          }
+        } catch (e) {
+          console.log(`   ❌ Failed: ${e.message}`);
+        }
+      }
+
+      // Fallback: Search all buttons
+      if (!submitClicked) {
+        console.log("\n⚡ Fallback: Searching all buttons for submit...");
+
+        const buttonFound = await page.evaluate(() => {
+          const buttons = Array.from(document.querySelectorAll("button"));
+
+          for (const btn of buttons) {
+            const ariaLabel = btn.getAttribute("aria-label") || "";
+            const id = btn.getAttribute("id") || "";
+            const text = btn.textContent?.trim() || "";
+
+            // YouTube comment submit button
+            if (
+              id.includes("submit-button") ||
+              (text === "Comment" && btn.offsetParent !== null) ||
+              (ariaLabel === "Comment" && btn.offsetParent !== null)
+            ) {
+              const rect = btn.getBoundingClientRect();
+              if (rect.width > 0 && rect.height > 0 && !btn.disabled) {
+                console.log(`✅ Found submit button: "${ariaLabel || text}"`);
+                btn.setAttribute("data-yt-submit-btn", "true");
+                return true;
+              }
+            }
+          }
+
+          return false;
+        });
+
+        if (buttonFound) {
+          await page.waitForTimeout(500);
+          await page.click('[data-yt-submit-btn="true"]');
+          console.log("   ✅ Clicked submit button (Fallback)");
+          submitClicked = true;
+        }
+      }
+
+      if (!submitClicked) {
+        throw new Error("Could not find or click Comment submit button");
+      }
+
+      console.log("⏳ Waiting for comment to post...");
+      await page.waitForTimeout(5000);
+    } else {
+      // ============================================
+      // REGULAR VIDEO LOGIC (UNCHANGED)
+      // ============================================
+      console.log("📜 Scrolling to comment section...");
+      await page.evaluate(() => {
+        window.scrollBy(0, 600);
+      });
+      await page.waitForTimeout(3000);
+
+      // Find comment box
+      console.log("🔍 Looking for comment box...");
+
+      const commentBoxFound = await page.evaluate(() => {
+        const boxes = Array.from(
+          document.querySelectorAll(
+            'div[contenteditable="true"], div[contenteditable="plaintext-only"]'
+          )
+        );
+
+        console.log(`Found ${boxes.length} editable boxes`);
+
+        for (const box of boxes) {
+          const id = box.getAttribute("id") || "";
+          const ariaLabel = box.getAttribute("aria-label") || "";
+          const placeholder = box.getAttribute("aria-placeholder") || "";
+          const dataPlaceholder = box.getAttribute("data-placeholder") || "";
+
+          if (
+            id.includes("simplebox") ||
+            id.includes("contenteditable-root") ||
+            ariaLabel.toLowerCase().includes("comment") ||
+            placeholder.toLowerCase().includes("comment") ||
+            dataPlaceholder.toLowerCase().includes("comment")
+          ) {
+            const rect = box.getBoundingClientRect();
+            if (rect.width > 0 && rect.height > 0) {
+              console.log("Found visible comment box!");
+              box.setAttribute("data-yt-comment-box", "true");
+              box.scrollIntoView({ behavior: "smooth", block: "center" });
+              return true;
+            }
           }
         }
 
         return false;
       });
 
-      if (!commentButtonFound) {
-        throw new Error("Comment button not found on Short");
+      if (!commentBoxFound) {
+        throw new Error("Comment box not found");
       }
 
-      // Click comment button to open comment section
-      console.log("🖱️ Clicking comment button...");
-      await page.evaluate(() => {
-        const btn = document.querySelector('[data-yt-comment-icon="true"]');
-        if (btn) btn.click();
+      console.log("✅ Found comment box");
+      await page.waitForTimeout(1500);
+
+      // Click comment box
+      await page.click('[data-yt-comment-box="true"]');
+      await page.waitForTimeout(1000);
+
+      // Type comment
+      console.log(`⌨️ Typing comment: "${commentText}"`);
+      const commentBox = page.locator('[data-yt-comment-box="true"]').first();
+      await commentBox.type(commentText, { delay: 50 });
+
+      console.log("✅ Comment typed");
+      await page.waitForTimeout(2000);
+
+      // Click submit button
+      console.log("🔍 Looking for Comment submit button...");
+
+      const commentBtnFound = await page.evaluate(() => {
+        const buttons = Array.from(document.querySelectorAll("button"));
+
+        for (const btn of buttons) {
+          const ariaLabel = btn.getAttribute("aria-label") || "";
+          const id = btn.getAttribute("id") || "";
+          const text = btn.textContent?.trim() || "";
+
+          if (
+            id.includes("submit-button") ||
+            (text === "Comment" && ariaLabel.toLowerCase().includes("comment"))
+          ) {
+            const rect = btn.getBoundingClientRect();
+            if (rect.width > 0 && rect.height > 0) {
+              console.log("Found Comment submit button");
+              btn.setAttribute("data-yt-comment-btn", "true");
+              return true;
+            }
+          }
+        }
+
+        return false;
       });
 
-      console.log("⏳ Waiting for comment panel to open...");
+      if (!commentBtnFound) {
+        throw new Error("Comment submit button not found");
+      }
+
+      console.log("✅ Found Comment button, clicking...");
+      await page.waitForTimeout(500);
+
+      await page.click('[data-yt-comment-btn="true"]');
+      console.log("✅ Clicked Comment button");
+
+      console.log("⏳ Waiting for comment to post...");
       await page.waitForTimeout(4000);
-    } else {
-      // For regular videos - scroll to comment section
-      console.log("📜 Scrolling to comment section...");
-      await page.evaluate(() => {
-        window.scrollBy(0, 600);
-      });
-      await page.waitForTimeout(3000);
     }
 
-    // Find comment box
-    console.log("🔍 Looking for comment box...");
+    // ============================================
+    // VERIFY COMMENT POSTED
+    // ============================================
+    console.log("🔍 Verifying comment was posted...");
 
-    const commentBoxFound = await page.evaluate(() => {
-      // Wait a bit for elements to settle
-      const boxes = Array.from(
-        document.querySelectorAll(
-          'div[contenteditable="true"], div[contenteditable="plaintext-only"]'
-        )
-      );
-
-      console.log(`Found ${boxes.length} editable boxes`);
-
-      for (const box of boxes) {
-        const id = box.getAttribute("id") || "";
-        const ariaLabel = box.getAttribute("aria-label") || "";
-        const placeholder = box.getAttribute("aria-placeholder") || "";
-        const dataPlaceholder = box.getAttribute("data-placeholder") || "";
-
-        console.log("Checking box:", {
-          id,
-          ariaLabel,
-          placeholder,
-          dataPlaceholder,
-        });
-
-        // YouTube comment box - check all possible attributes
-        if (
-          id.includes("simplebox") ||
-          id.includes("contenteditable-root") ||
-          ariaLabel.toLowerCase().includes("comment") ||
-          placeholder.toLowerCase().includes("comment") ||
-          dataPlaceholder.toLowerCase().includes("comment")
-        ) {
-          // Make sure it's visible
-          const rect = box.getBoundingClientRect();
-          if (rect.width > 0 && rect.height > 0) {
-            console.log("Found visible comment box!");
-            box.setAttribute("data-yt-comment-box", "true");
-            box.scrollIntoView({ behavior: "smooth", block: "center" });
-            return true;
-          }
-        }
-      }
-
-      return false;
-    });
-
-    if (!commentBoxFound) {
-      throw new Error("Comment box not found");
-    }
-
-    console.log("✅ Found comment box");
-    await page.waitForTimeout(1500);
-
-    // Focus and type comment
-    console.log("📝 Clicking comment box to focus...");
-
-    await page.evaluate(() => {
-      const box = document.querySelector('[data-yt-comment-box="true"]');
-      if (box) {
-        box.click();
-        box.focus();
-      }
-    });
-
-    await page.waitForTimeout(1000);
-
-    // Type comment
-    console.log(`⌨️ Typing comment: "${commentText}"`);
-
-    const commentBox = page.locator('[data-yt-comment-box="true"]').first();
-    await commentBox.click();
-    await page.waitForTimeout(500);
-    await commentBox.type(commentText, { delay: 50 });
-
-    console.log("✅ Comment typed");
-    await page.waitForTimeout(2000);
-
-    // Find and click Comment button
-    console.log("🔍 Looking for Comment submit button...");
-
-    const commentBtnFound = await page.evaluate(() => {
-      const buttons = Array.from(document.querySelectorAll("button"));
-
-      for (const btn of buttons) {
-        const ariaLabel = btn.getAttribute("aria-label") || "";
-        const id = btn.getAttribute("id") || "";
-        const text = btn.textContent?.trim() || "";
-
-        console.log("Checking button:", { id, ariaLabel, text });
-
-        // YouTube comment submit button
-        if (
-          id.includes("submit-button") ||
-          (text === "Comment" && ariaLabel.toLowerCase().includes("comment"))
-        ) {
-          const rect = btn.getBoundingClientRect();
-          if (rect.width > 0 && rect.height > 0) {
-            console.log("Found Comment submit button");
-            btn.setAttribute("data-yt-comment-btn", "true");
-            return true;
-          }
-        }
-      }
-
-      return false;
-    });
-
-    if (!commentBtnFound) {
-      throw new Error("Comment submit button not found");
-    }
-
-    console.log("✅ Found Comment button, clicking...");
-    await page.waitForTimeout(500);
-
-    // Click Comment button
-    let clickSuccess = false;
-
-    try {
-      const commentBtn = page.locator('[data-yt-comment-btn="true"]').first();
-      await commentBtn.click({ timeout: 5000 });
-      clickSuccess = true;
-      console.log("✅ Clicked Comment button (locator)");
-    } catch (e) {
-      console.log("⚠️ Locator click failed, trying JS...");
-    }
-
-    if (!clickSuccess) {
-      try {
-        await page.evaluate(() => {
-          const btn = document.querySelector('[data-yt-comment-btn="true"]');
-          if (btn) btn.click();
-        });
-        clickSuccess = true;
-        console.log("✅ Clicked Comment button (JavaScript)");
-      } catch (e) {
-        console.log("⚠️ JS click failed");
-      }
-    }
-
-    if (!clickSuccess) {
-      throw new Error("Failed to click Comment button");
-    }
-
-    console.log("⏳ Waiting for comment to post...");
-    await page.waitForTimeout(4000);
-
-    // Verify comment was posted
     const verified = await page.evaluate((text) => {
       const bodyText = document.body.innerText;
       return bodyText.includes(text);
     }, commentText);
 
+    console.log(
+      `✅ Verification: ${
+        verified ? "Comment found on page" : "Comment not immediately visible"
+      }`
+    );
     console.log("✅ YouTube comment posted successfully!");
 
     return {
@@ -6360,6 +6653,16 @@ async function youtubeComment(page, targetUrl, commentText) {
     };
   } catch (error) {
     console.error("❌ YouTube comment failed:", error.message);
+
+    // Take screenshot for debugging
+    try {
+      const screenshotPath = `youtube-comment-error-${Date.now()}.png`;
+      await page.screenshot({ path: screenshotPath, fullPage: true });
+      console.log(`📸 Error screenshot saved: ${screenshotPath}`);
+    } catch (e) {
+      console.log("⚠️ Could not save screenshot");
+    }
+
     return {
       success: false,
       message: error.message,
@@ -10212,7 +10515,7 @@ async function tiktokScrollBot(page, accountId, options = {}) {
     password = null,
   } = options;
 
-  // Initialize bot state
+  // Initialize bot state with detailed tracking
   activeScrollBots[accountId] = {
     shouldStop: false,
     platform: "tiktok",
@@ -10220,6 +10523,8 @@ async function tiktokScrollBot(page, accountId, options = {}) {
       scrolls: 0,
       likes: 0,
       comments: 0,
+      commentAttempts: 0,
+      commentsFailed: 0,
       shares: 0,
       attempts: 0,
       errors: [],
@@ -10227,45 +10532,72 @@ async function tiktokScrollBot(page, accountId, options = {}) {
     },
   };
 
-  // Helper function to check if logged in
-  // async function checkIfLoggedIn() {
-  //   try {
-  //     const currentUrl = page.url();
-  //     console.log("📍 Current URL:", currentUrl);
+  // ============================================
+  // HELPER: Check if logged in
+  // ============================================
+  async function checkIfLoggedIn() {
+    try {
+      const currentUrl = page.url();
+      console.log("📍 Current URL:", currentUrl);
 
-  //     // Check if we're on login page
-  //     if (currentUrl.includes('/login')) {
-  //       return false;
-  //     }
+      // Check if we're on login page
+      if (currentUrl.includes("/login")) {
+        return false;
+      }
 
-  //     // Check for login indicators
-  //     const loginButton = await page.locator('button:has-text("Log in")').isVisible({ timeout: 2000 }).catch(() => false);
-  //     if (loginButton) {
-  //       return false;
-  //     }
+      // Check for login button (indicates not logged in)
+      const loginButton = await page
+        .locator('button:has-text("Log in")')
+        .first()
+        .isVisible({ timeout: 2000 })
+        .catch(() => false);
+      if (loginButton) {
+        return false;
+      }
 
-  //     // Check for user profile icon (indicates logged in)
-  //     const profileIcon = await page.locator('[data-e2e="nav-profile"]').isVisible({ timeout: 2000 }).catch(() => false);
-  //     if (profileIcon) {
-  //       console.log("✅ Already logged in (profile icon found)");
-  //       return true;
-  //     }
+      // Check for user profile icon (indicates logged in)
+      const profileIcon = await page
+        .locator('[data-e2e="nav-profile"]')
+        .first()
+        .isVisible({ timeout: 2000 })
+        .catch(() => false);
+      if (profileIcon) {
+        console.log("✅ Already logged in (profile icon found)");
+        return true;
+      }
 
-  //     // Check for upload button (only visible when logged in)
-  //     const uploadButton = await page.locator('[data-e2e="nav-upload"]').isVisible({ timeout: 2000 }).catch(() => false);
-  //     if (uploadButton) {
-  //       console.log("✅ Already logged in (upload button found)");
-  //       return true;
-  //     }
+      // Check for upload button (only visible when logged in)
+      const uploadButton = await page
+        .locator('[data-e2e="nav-upload"]')
+        .first()
+        .isVisible({ timeout: 2000 })
+        .catch(() => false);
+      if (uploadButton) {
+        console.log("✅ Already logged in (upload button found)");
+        return true;
+      }
 
-  //     return false;
-  //   } catch (e) {
-  //     console.log("⚠️ Could not determine login status:", e.message);
-  //     return false;
-  //   }
-  // }
+      // Additional check: Look for avatar or user menu
+      const avatar = await page
+        .locator('div[data-e2e="nav-avatar"]')
+        .first()
+        .isVisible({ timeout: 2000 })
+        .catch(() => false);
+      if (avatar) {
+        console.log("✅ Already logged in (avatar found)");
+        return true;
+      }
 
-  // Helper function to perform login
+      return false;
+    } catch (e) {
+      console.log("⚠️ Could not determine login status:", e.message);
+      return false;
+    }
+  }
+
+  // ============================================
+  // HELPER: Perform login
+  // ============================================
   async function performLogin() {
     try {
       console.log("🔐 Attempting to log in to TikTok...");
@@ -10289,6 +10621,7 @@ async function tiktokScrollBot(page, accountId, options = {}) {
         'input[type="text"]',
         'input[name="email"]',
         'input[placeholder*="email" i]',
+        'input[placeholder*="Email" i]',
       ];
       let emailEntered = false;
 
@@ -10379,7 +10712,8 @@ async function tiktokScrollBot(page, accountId, options = {}) {
 
       // Check for CAPTCHA
       const captchaVisible = await page
-        .locator('div:has-text("Verify")')
+        .locator('div:has-text("Verify"), div:has-text("verification")')
+        .first()
         .isVisible({ timeout: 3000 })
         .catch(() => false);
       if (captchaVisible) {
@@ -10417,7 +10751,9 @@ async function tiktokScrollBot(page, accountId, options = {}) {
     }
   }
 
-  // Helper function to check if already liked
+  // ============================================
+  // HELPER: Check if already liked
+  // ============================================
   async function isVideoAlreadyLiked(videoContainer) {
     try {
       return await videoContainer.evaluate((container) => {
@@ -10428,11 +10764,13 @@ async function tiktokScrollBot(page, accountId, options = {}) {
 
         if (!likeButton) return false;
 
+        // Check for active/liked class
         const isActive =
           likeButton.classList.contains("active") ||
           likeButton.classList.contains("liked");
         if (isActive) return true;
 
+        // Check SVG fill color
         const svg = likeButton.querySelector("svg");
         if (svg) {
           const path = svg.querySelector("path");
@@ -10453,6 +10791,7 @@ async function tiktokScrollBot(page, accountId, options = {}) {
           }
         }
 
+        // Check aria-label for "unlike"
         const ariaLabel = likeButton.getAttribute("aria-label");
         if (ariaLabel && ariaLabel.toLowerCase().includes("unlike")) {
           return true;
@@ -10465,7 +10804,9 @@ async function tiktokScrollBot(page, accountId, options = {}) {
     }
   }
 
-  // Helper function to perform like action
+  // ============================================
+  // HELPER: Perform like
+  // ============================================
   async function performLike(videoContainer) {
     try {
       const strategies = [
@@ -10505,51 +10846,162 @@ async function tiktokScrollBot(page, accountId, options = {}) {
     }
   }
 
-  // Helper function to perform comment action
+  // ============================================
+  // HELPER: Perform comment (FIXED)
+  // ============================================
   async function performComment(videoContainer) {
     try {
+      console.log("\n💬 Starting comment process...");
+
+      // STEP 1: Click comment button
+      console.log("🔍 Looking for comment button...");
       const commentButton = videoContainer
-        .locator('[data-e2e="comment-icon"]')
+        .locator('[data-e2e="comment-icon"], [data-e2e="browse-comment"]')
         .first();
 
-      if (await commentButton.isVisible({ timeout: 2000 }).catch(() => false)) {
-        await commentButton.scrollIntoViewIfNeeded({ timeout: 1000 });
-        await page.waitForTimeout(300);
-        await commentButton.click({ timeout: 2000 });
-        await page.waitForTimeout(2000);
+      if (!(await commentButton.isVisible({ timeout: 2000 }).catch(() => false))) {
+        console.log("⚠️ Comment button not visible");
+        return false;
+      }
 
-        const commentBox = page.locator('[data-e2e="comment-input"]').first();
+      console.log("✅ Comment button found, clicking...");
+      await commentButton.scrollIntoViewIfNeeded({ timeout: 1000 });
+      await page.waitForTimeout(300);
+      await commentButton.click({ timeout: 2000 });
+      console.log("✅ Comment button clicked");
 
-        if (await commentBox.isVisible({ timeout: 3000 }).catch(() => false)) {
-          const comment = comments[Math.floor(Math.random() * comments.length)];
+      // Wait for comment section to load
+      await page.waitForTimeout(3000);
 
-          await commentBox.click({ timeout: 2000 });
-          await page.waitForTimeout(500);
-          await commentBox.pressSequentially(comment, { delay: 100 });
-          await page.waitForTimeout(1000);
+      // STEP 2: Find comment input box
+      console.log("🔍 Looking for comment input box...");
+      const commentBoxSelectors = [
+        '[data-e2e="comment-input"]',
+        'div[contenteditable="true"]',
+        'div[data-e2e="comment-input-container"] div[contenteditable="true"]',
+        'textarea[placeholder*="comment" i]',
+      ];
 
-          const postButton = page.locator('[data-e2e="comment-post"]').first();
+      let commentBox = null;
 
-          if (
-            await postButton.isVisible({ timeout: 2000 }).catch(() => false)
-          ) {
-            await postButton.click({ timeout: 2000 });
-
-            activeScrollBots[accountId].stats.comments++;
-            console.log(
-              `💬 Commented: "${comment}" (Total: ${activeScrollBots[accountId].stats.comments})`
-            );
-            await page.waitForTimeout(2000 + Math.floor(Math.random() * 2000));
-
-            await page.keyboard.press("Escape");
-            await page.waitForTimeout(500);
-            return true;
+      for (const selector of commentBoxSelectors) {
+        try {
+          const box = page.locator(selector).first();
+          if (await box.isVisible({ timeout: 2000 }).catch(() => false)) {
+            console.log(`✅ Found comment box: ${selector}`);
+            commentBox = box;
+            break;
           }
+        } catch (e) {
+          continue;
         }
       }
 
-      return false;
+      if (!commentBox) {
+        console.log("❌ Comment input box not found");
+        try {
+          await page.keyboard.press("Escape");
+        } catch {}
+        return false;
+      }
+
+      // STEP 3: Type comment
+      const comment = comments[Math.floor(Math.random() * comments.length)];
+      console.log(`⌨️ Typing comment: "${comment}"`);
+
+      await commentBox.click({ timeout: 2000 });
+      await page.waitForTimeout(500);
+
+      // Use pressSequentially for better typing simulation
+      await commentBox.pressSequentially(comment, { delay: 80 });
+      console.log("✅ Comment typed");
+
+      await page.waitForTimeout(1500);
+
+      // STEP 4: Click post button
+      console.log("🔍 Looking for post button...");
+      const postButtonSelectors = [
+        '[data-e2e="comment-post"]',
+        'button:has-text("Post")',
+        'div[data-e2e="comment-post"]',
+      ];
+
+      let posted = false;
+
+      for (const selector of postButtonSelectors) {
+        try {
+          const postButton = page.locator(selector).first();
+          if (await postButton.isVisible({ timeout: 2000 }).catch(() => false)) {
+            console.log(`✅ Found post button: ${selector}`);
+            await postButton.click({ timeout: 2000 });
+            console.log("✅ Post button clicked");
+            posted = true;
+            break;
+          }
+        } catch (e) {
+          continue;
+        }
+      }
+
+      if (!posted) {
+        console.log("⚠️ Post button not found or not clickable");
+        try {
+          await page.keyboard.press("Escape");
+        } catch {}
+        return false;
+      }
+
+      activeScrollBots[accountId].stats.comments++;
+      console.log(
+        `✅ Comment posted: "${comment}" (Total: ${activeScrollBots[accountId].stats.comments})`
+      );
+
+      await page.waitForTimeout(2000 + Math.floor(Math.random() * 2000));
+
+      // Close comment section
+      await page.keyboard.press("Escape");
+      await page.waitForTimeout(500);
+
+      return true;
     } catch (e) {
+      console.log("❌ Comment failed:", e.message);
+      try {
+        await page.keyboard.press("Escape");
+        await page.waitForTimeout(500);
+      } catch {}
+      return false;
+    }
+  }
+
+  // ============================================
+  // HELPER: Perform share
+  // ============================================
+  async function performShare(videoContainer) {
+    try {
+      const shareButton = videoContainer
+        .locator('[data-e2e="share-icon"], [data-e2e="browse-share"]')
+        .first();
+
+      if (!(await shareButton.isVisible({ timeout: 2000 }).catch(() => false))) {
+        console.log("⚠️ Share button not visible");
+        return false;
+      }
+
+      await shareButton.scrollIntoViewIfNeeded({ timeout: 1000 });
+      await page.waitForTimeout(300);
+      await shareButton.click({ timeout: 2000 });
+
+      activeScrollBots[accountId].stats.shares++;
+      console.log(
+        `🔗 Shared! (Total: ${activeScrollBots[accountId].stats.shares})`
+      );
+      await page.waitForTimeout(1000 + Math.floor(Math.random() * 1500));
+
+      await page.keyboard.press("Escape");
+      await page.waitForTimeout(500);
+      return true;
+    } catch (e) {
+      console.log("⚠️ Share failed:", e.message);
       try {
         await page.keyboard.press("Escape");
       } catch {}
@@ -10557,64 +11009,34 @@ async function tiktokScrollBot(page, accountId, options = {}) {
     }
   }
 
-  // Helper function to perform share action
-  async function performShare(videoContainer) {
-    try {
-      const shareButton = videoContainer
-        .locator('[data-e2e="share-icon"]')
-        .first();
-
-      if (await shareButton.isVisible({ timeout: 2000 }).catch(() => false)) {
-        await shareButton.scrollIntoViewIfNeeded({ timeout: 1000 });
-        await page.waitForTimeout(300);
-        await shareButton.click({ timeout: 2000 });
-
-        activeScrollBots[accountId].stats.shares++;
-        console.log(
-          `🔗 Shared! (Total: ${activeScrollBots[accountId].stats.shares})`
-        );
-        await page.waitForTimeout(1000 + Math.floor(Math.random() * 1500));
-
-        await page.keyboard.press("Escape");
-        await page.waitForTimeout(500);
-        return true;
-      }
-
-      return false;
-    } catch (e) {
-      return false;
-    }
-  }
-
+  // ============================================
+  // MAIN EXECUTION
+  // ============================================
   try {
-    // ⭐ STEP 1: Check if logged in, if not, perform login
+    // STEP 1: Check login status
     console.log("🔍 Checking login status...");
 
     await page.goto("https://www.tiktok.com/foryou", {
       waitUntil: "domcontentloaded",
       timeout: 30000,
     });
-    await page.waitForTimeout(3000);
+    await page.waitForTimeout(4000);
 
     const isLoggedIn = await checkIfLoggedIn();
 
     if (!isLoggedIn) {
       console.log("🔐 Not logged in - attempting to log in...");
       await performLogin();
-    } else {
-      console.log("✅ Already logged in - proceeding to scroll");
-    }
-
-    // ⭐ STEP 2: Navigate to For You page (if not already there)
-    console.log("🏠 Ensuring we're on the For You page...");
-    const currentUrl = page.url();
-
-    if (!currentUrl.includes("/foryou")) {
+      
+      // Navigate back to For You page after login
+      console.log("🏠 Navigating to For You page...");
       await page.goto("https://www.tiktok.com/foryou", {
         waitUntil: "domcontentloaded",
         timeout: 30000,
       });
       await page.waitForTimeout(5000);
+    } else {
+      console.log("✅ Already logged in - proceeding to scroll");
     }
 
     console.log("✅ Ready to start scrolling!");
@@ -10623,16 +11045,22 @@ async function tiktokScrollBot(page, accountId, options = {}) {
     let consecutiveErrors = 0;
     const MAX_CONSECUTIVE_ERRORS = 10;
 
-    // ⭐ STEP 3: Start infinite scroll loop
+    // STEP 2: Start infinite scroll loop
     while (!activeScrollBots[accountId]?.shouldStop) {
       scrollIteration++;
-      console.log(`\n⬇️ Scroll iteration: ${scrollIteration}`);
+      console.log(`\n${"=".repeat(50)}`);
+      console.log(`⬇️ Scroll iteration: ${scrollIteration}`);
+      console.log(`${"=".repeat(50)}`);
 
+      // Scroll to next video
       await page.keyboard.press("ArrowDown");
       await page.waitForTimeout(3000 + Math.floor(Math.random() * 2000));
 
       activeScrollBots[accountId].stats.scrolls = scrollIteration;
 
+      if (activeScrollBots[accountId]?.shouldStop) break;
+
+      // Find video containers
       let videoContainers = await page
         .locator('[data-e2e="recommend-list-item-container"]')
         .all();
@@ -10654,7 +11082,7 @@ async function tiktokScrollBot(page, accountId, options = {}) {
         consecutiveErrors++;
 
         if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
-          console.log("❌ Too many errors, stopping");
+          console.log("❌ Too many consecutive errors, stopping");
           break;
         }
         continue;
@@ -10671,6 +11099,7 @@ async function tiktokScrollBot(page, accountId, options = {}) {
 
         activeScrollBots[accountId].stats.attempts++;
 
+        // Check if already liked
         const alreadyLiked = await isVideoAlreadyLiked(videoContainer);
 
         // ❤️ LIKE
@@ -10693,13 +11122,34 @@ async function tiktokScrollBot(page, accountId, options = {}) {
 
         if (activeScrollBots[accountId]?.shouldStop) break;
 
-        // 💬 COMMENT
+        // 💬 COMMENT (FIXED)
         if (Math.random() * 100 < commentChance) {
-          await performComment(videoContainer);
+          activeScrollBots[accountId].stats.commentAttempts++;
+          console.log(
+            `💬 Comment attempt ${activeScrollBots[accountId].stats.commentAttempts}...`
+          );
+
+          const commentSuccess = await performComment(videoContainer);
+
+          if (!commentSuccess) {
+            activeScrollBots[accountId].stats.commentsFailed++;
+            console.log(
+              `❌ Comment failed (Total failed: ${activeScrollBots[accountId].stats.commentsFailed})`
+            );
+          }
+
+          // Extra wait after comment attempt
+          await page.waitForTimeout(2000 + Math.floor(Math.random() * 2000));
         }
       } catch (err) {
         console.log("⚠️ Interaction error:", err.message);
+        activeScrollBots[accountId].stats.errors.push(err.message);
         consecutiveErrors++;
+
+        if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+          console.log("❌ Too many consecutive errors, stopping");
+          break;
+        }
       }
 
       // Random pause every 5-8 scrolls
@@ -10717,24 +11167,44 @@ async function tiktokScrollBot(page, accountId, options = {}) {
       }
     }
 
+    // ============================================
+    // FINAL STATS
+    // ============================================
     const finalStats = activeScrollBots[accountId].stats;
     const duration = Math.floor((Date.now() - finalStats.startTime) / 1000);
+    const commentSuccessRate =
+      finalStats.commentAttempts > 0
+        ? Math.round((finalStats.comments / finalStats.commentAttempts) * 100)
+        : 0;
 
-    console.log("\n✅ TikTok scroll bot stopped");
-    console.log(
-      `📊 Stats: Scrolls: ${finalStats.scrolls} | Likes: ${finalStats.likes} | Comments: ${finalStats.comments} | Shares: ${finalStats.shares}`
-    );
-    console.log(`⏱️ Duration: ${duration}s`);
+    console.log("\n" + "=".repeat(60));
+    console.log("✅ TikTok scroll bot STOPPED");
+    console.log("=".repeat(60));
+    console.log(`📊 Final Statistics:`);
+    console.log(`   🔄 Scrolls: ${finalStats.scrolls}`);
+    console.log(`   ❤️  Likes: ${finalStats.likes}`);
+    console.log(`   💬 Comments: ${finalStats.comments}`);
+    console.log(`   📝 Comment Attempts: ${finalStats.commentAttempts}`);
+    console.log(`   ❌ Comments Failed: ${finalStats.commentsFailed}`);
+    console.log(`   ✅ Comment Success Rate: ${commentSuccessRate}%`);
+    console.log(`   🔗 Shares: ${finalStats.shares}`);
+    console.log(`   ⏱️  Duration: ${duration}s (${Math.floor(duration / 60)}m)`);
+    console.log(`   ⚠️  Total Errors: ${finalStats.errors.length}`);
+    console.log("=".repeat(60));
 
     delete activeScrollBots[accountId];
 
     return {
       success: true,
       message: "TikTok scrolling stopped",
-      stats: { ...finalStats, duration: `${duration}s` },
+      stats: {
+        ...finalStats,
+        duration: `${duration}s`,
+        commentSuccessRate: `${commentSuccessRate}%`,
+      },
     };
   } catch (error) {
-    console.error("❌ TikTok bot error:", error.message);
+    console.error("❌ TikTok bot fatal error:", error.message);
 
     if (activeScrollBots[accountId]) {
       activeScrollBots[accountId].stats.errors.push(error.message);
@@ -10745,6 +11215,7 @@ async function tiktokScrollBot(page, accountId, options = {}) {
     return {
       success: false,
       message: error.message,
+      error: error.stack,
     };
   }
 }
@@ -10763,10 +11234,12 @@ async function youtubeScrollBot(page, accountId, options = {}) {
       "Perfect! 💯",
       "This is awesome! 🚀",
       "Keep it up! 💪",
+      "Incredible! 🌟",
+      "Can't stop watching! 👀",
     ],
   } = options;
 
-  // Initialize bot state
+  // Initialize bot state with detailed comment tracking
   activeScrollBots[accountId] = {
     shouldStop: false,
     platform: "youtube",
@@ -10774,30 +11247,28 @@ async function youtubeScrollBot(page, accountId, options = {}) {
       scrolls: 0,
       likes: 0,
       comments: 0,
+      commentAttempts: 0,
+      commentsFailed: 0,
       attempts: 0,
       errors: [],
       startTime: Date.now(),
     },
   };
 
-  // Helper function to check if video is already liked
+  // ============================================
+  // HELPER: Check if video is already liked
+  // ============================================
   async function isVideoAlreadyLiked() {
     try {
       return await page.evaluate(() => {
         const buttons = Array.from(document.querySelectorAll("button"));
-
         for (const btn of buttons) {
           const ariaLabel = btn.getAttribute("aria-label") || "";
           const isPressed = btn.getAttribute("aria-pressed") === "true";
-
-          if (
-            ariaLabel.toLowerCase().includes("like this video") &&
-            isPressed
-          ) {
+          if (ariaLabel.toLowerCase().includes("like this video") && isPressed) {
             return true;
           }
         }
-
         return false;
       });
     } catch (e) {
@@ -10805,39 +11276,31 @@ async function youtubeScrollBot(page, accountId, options = {}) {
     }
   }
 
-  // Helper function to perform like
+  // ============================================
+  // HELPER: Perform like
+  // ============================================
   async function performLike() {
     try {
       const liked = await page.evaluate(() => {
         const buttons = Array.from(document.querySelectorAll("button"));
-
         for (const btn of buttons) {
           const ariaLabel = btn.getAttribute("aria-label") || "";
           const isPressed = btn.getAttribute("aria-pressed") === "true";
-
-          // Find like button and check if not already liked
-          if (
-            ariaLabel.toLowerCase().includes("like this video") &&
-            !isPressed
-          ) {
+          if (ariaLabel.toLowerCase().includes("like this video") && !isPressed) {
             btn.click();
             console.log("✅ Like button clicked");
             return true;
           }
         }
-
         return false;
       });
 
       if (liked) {
         activeScrollBots[accountId].stats.likes++;
-        console.log(
-          `❤️ Liked! (Total: ${activeScrollBots[accountId].stats.likes})`
-        );
+        console.log(`❤️ Liked! (Total: ${activeScrollBots[accountId].stats.likes})`);
         await page.waitForTimeout(1000 + Math.floor(Math.random() * 1500));
         return true;
       }
-
       return false;
     } catch (e) {
       console.log("⚠️ Like failed:", e.message);
@@ -10845,125 +11308,357 @@ async function youtubeScrollBot(page, accountId, options = {}) {
     }
   }
 
-  // Helper function to perform comment
+  // ============================================
+  // HELPER: Perform comment (COMPLETE FIXED VERSION)
+  // ============================================
   async function performComment() {
     try {
-      // Click comment button to open comment section
-      const commentOpened = await page.evaluate(() => {
-        const buttons = Array.from(document.querySelectorAll("button"));
+      console.log("\n💬 Starting comment process...");
 
-        for (const btn of buttons) {
-          const ariaLabel = btn.getAttribute("aria-label") || "";
+      // STEP 1: Open comment panel - Method 1 (aria-label)
+      console.log("🔍 Method 1: Looking for comment button via aria-label...");
+      
+      let commentPanelOpened = false;
 
-          if (ariaLabel.toLowerCase().includes("comment")) {
-            btn.click();
-            console.log("✅ Comment button clicked");
-            return true;
-          }
+      try {
+        const commentButtonSelector = 'button[aria-label*="Comment"]';
+        const commentButton = await page.$(commentButtonSelector);
+
+        if (commentButton) {
+          const ariaLabel = await commentButton.getAttribute("aria-label");
+          console.log(`   ✅ Found button: "${ariaLabel}"`);
+          await commentButton.scrollIntoViewIfNeeded();
+          await commentButton.click();
+          console.log("   ✅ Clicked comment button (Method 1)");
+          commentPanelOpened = true;
+        } else {
+          console.log("   ❌ Method 1 failed");
         }
-
-        return false;
-      });
-
-      if (!commentOpened) {
-        console.log("⚠️ Comment button not found");
-        return false;
+      } catch (e) {
+        console.log("   ❌ Method 1 error:", e.message);
       }
 
-      await page.waitForTimeout(2000);
+      // STEP 1b: Method 2 - Search all buttons
+      if (!commentPanelOpened) {
+        console.log("⚡ Method 2: Searching all buttons...");
 
-      // Find comment box
-      const commentBoxFound = await page.evaluate(() => {
-        const boxes = Array.from(
-          document.querySelectorAll(
-            'div[contenteditable="true"], div[contenteditable="plaintext-only"]'
-          )
-        );
+        const buttonFound = await page.evaluate(() => {
+          const buttons = Array.from(document.querySelectorAll("button"));
+          console.log(`Found ${buttons.length} buttons`);
 
-        for (const box of boxes) {
-          const rect = box.getBoundingClientRect();
-          if (rect.width > 0 && rect.height > 0) {
-            box.setAttribute("data-yt-comment-temp", "true");
-            box.scrollIntoView({ behavior: "smooth", block: "center" });
-            return true;
-          }
-        }
+          for (let i = 0; i < buttons.length; i++) {
+            const btn = buttons[i];
+            const ariaLabel = btn.getAttribute("aria-label") || "";
 
-        return false;
-      });
+            if (i < 20) {
+              console.log(`Button ${i}: "${ariaLabel}"`);
+            }
 
-      if (!commentBoxFound) {
-        console.log("⚠️ Comment box not found");
-        return false;
-      }
-
-      await page.waitForTimeout(1000);
-
-      // Type comment
-      const comment = comments[Math.floor(Math.random() * comments.length)];
-
-      await page.evaluate(() => {
-        const box = document.querySelector('[data-yt-comment-temp="true"]');
-        if (box) {
-          box.click();
-          box.focus();
-        }
-      });
-
-      await page.waitForTimeout(500);
-
-      const commentBox = page.locator('[data-yt-comment-temp="true"]').first();
-      await commentBox.click();
-      await page.waitForTimeout(300);
-      await commentBox.type(comment, { delay: 50 });
-
-      await page.waitForTimeout(1500);
-
-      // Click Comment submit button
-      const submitted = await page.evaluate(() => {
-        const buttons = Array.from(document.querySelectorAll("button"));
-
-        for (const btn of buttons) {
-          const text = btn.textContent?.trim() || "";
-
-          if (text === "Comment") {
-            const rect = btn.getBoundingClientRect();
-            if (rect.width > 0 && rect.height > 0) {
-              btn.click();
-              console.log("✅ Comment submitted");
+            if (ariaLabel.toLowerCase().includes("comment")) {
+              console.log(`✅ Found comment button: "${ariaLabel}"`);
+              btn.setAttribute("data-yt-comment-icon", "true");
+              btn.scrollIntoView({ behavior: "smooth", block: "center" });
               return true;
             }
           }
+          return false;
+        });
+
+        if (buttonFound) {
+          await page.waitForTimeout(1000);
+          await page.click('[data-yt-comment-icon="true"]');
+          console.log("   ✅ Clicked comment button (Method 2)");
+          commentPanelOpened = true;
+        } else {
+          console.log("   ❌ Method 2 failed");
         }
-
-        return false;
-      });
-
-      if (submitted) {
-        activeScrollBots[accountId].stats.comments++;
-        console.log(
-          `💬 Commented: "${comment}" (Total: ${activeScrollBots[accountId].stats.comments})`
-        );
-        await page.waitForTimeout(2000);
-
-        // Close comment panel
-        await page.keyboard.press("Escape");
-        await page.waitForTimeout(500);
-        return true;
       }
 
-      return false;
+      if (!commentPanelOpened) {
+        console.log("❌ Could not open comment panel");
+        return false;
+      }
+
+      console.log("✅ Comment panel opened");
+      await page.waitForTimeout(4000); // Wait for panel to fully load
+
+      // STEP 2: Click placeholder to activate comment box
+      console.log("🔍 Looking for comment placeholder...");
+
+      try {
+        const placeholderArea = await page.$("#simplebox-placeholder");
+        if (placeholderArea) {
+          await placeholderArea.click();
+          console.log("   ✅ Clicked placeholder area");
+          await page.waitForTimeout(1500);
+        } else {
+          console.log("   ⚠️ Placeholder not found, continuing...");
+        }
+      } catch (e) {
+        console.log("   ⚠️ Placeholder click failed:", e.message);
+      }
+
+      // STEP 3: Find comment box using multiple strategies
+      console.log("🔍 Looking for comment input box...");
+
+      // Strategy A: Try specific selectors first
+      const shortsCommentBoxSelectors = [
+        '#contenteditable-root[contenteditable="true"]',
+        "#simplebox-placeholder",
+        "#contenteditable-root",
+        'div[id="contenteditable-root"][contenteditable="true"]',
+      ];
+
+      let commentBoxFound = false;
+      let commentBoxElement = null;
+
+      for (const selector of shortsCommentBoxSelectors) {
+        try {
+          console.log(`   ⚡ Trying selector: ${selector}`);
+          commentBoxElement = await page.$(selector);
+
+          if (commentBoxElement) {
+            const isVisible = await commentBoxElement.isVisible();
+            console.log(`      Visible: ${isVisible}`);
+
+            if (isVisible) {
+              console.log(`   ✅ Found visible comment box: ${selector}`);
+              commentBoxFound = true;
+              break;
+            }
+          }
+        } catch (e) {
+          console.log(`   ❌ ${selector} failed:`, e.message);
+        }
+      }
+
+      // Strategy B: Search all contenteditable elements
+      if (!commentBoxFound) {
+        console.log("\n⚡ Fallback: Searching all editable elements...");
+
+        commentBoxFound = await page.evaluate(() => {
+          const editables = Array.from(
+            document.querySelectorAll(
+              'div[contenteditable="true"], div[contenteditable="plaintext-only"]'
+            )
+          );
+
+          console.log(`Found ${editables.length} editable elements`);
+
+          for (let i = 0; i < editables.length; i++) {
+            const box = editables[i];
+            const id = box.getAttribute("id") || "";
+            const ariaLabel = box.getAttribute("aria-label") || "";
+            const placeholder = box.getAttribute("aria-placeholder") || "";
+
+            console.log(`Editable ${i}:`, {
+              id,
+              ariaLabel,
+              placeholder,
+              visible: box.offsetParent !== null,
+            });
+
+            if (
+              id.includes("simplebox") ||
+              id.includes("contenteditable-root") ||
+              ariaLabel.toLowerCase().includes("comment") ||
+              placeholder.toLowerCase().includes("comment")
+            ) {
+              const rect = box.getBoundingClientRect();
+              if (rect.width > 0 && rect.height > 0) {
+                console.log(`✅ Found comment box: id="${id}"`);
+                box.setAttribute("data-yt-comment-box", "true");
+                box.scrollIntoView({ behavior: "smooth", block: "center" });
+                return true;
+              }
+            }
+          }
+          return false;
+        });
+
+        if (commentBoxFound) {
+          console.log("   ✅ Found comment box via fallback");
+          commentBoxElement = await page.$('[data-yt-comment-box="true"]');
+        }
+      }
+
+      if (!commentBoxFound) {
+        console.log("❌ Comment box not found");
+
+        // Debug logging
+        await page.evaluate(() => {
+          console.log("=== DEBUG: All contenteditable elements ===");
+          const all = document.querySelectorAll("[contenteditable]");
+          all.forEach((el, i) => {
+            const rect = el.getBoundingClientRect();
+            console.log(`${i}:`, {
+              tag: el.tagName,
+              id: el.id,
+              visible: rect.width > 0 && rect.height > 0,
+              contenteditable: el.getAttribute("contenteditable"),
+            });
+          });
+        });
+
+        try {
+          await page.keyboard.press("Escape");
+        } catch {}
+        return false;
+      }
+
+      console.log("✅ Comment box located");
+      await page.waitForTimeout(1000);
+
+      // STEP 4: Find and focus the active input
+      console.log("⌨️ Finding active input field...");
+
+      const activeInput = await page.$(
+        '#contenteditable-root[contenteditable="true"]'
+      );
+
+      if (!activeInput) {
+        console.log("❌ Could not find active contenteditable input");
+        
+        // Try using the marked element
+        const markedBox = await page.$('[data-yt-comment-box="true"]');
+        if (!markedBox) {
+          try {
+            await page.keyboard.press("Escape");
+          } catch {}
+          return false;
+        }
+        
+        console.log("✅ Using fallback comment box");
+        await markedBox.click();
+        await page.waitForTimeout(500);
+        await markedBox.click();
+        await page.waitForTimeout(500);
+        
+        commentBoxElement = markedBox;
+      } else {
+        console.log("✅ Found active input");
+        await activeInput.click();
+        await page.waitForTimeout(500);
+        commentBoxElement = activeInput;
+      }
+
+      // STEP 5: Type the comment
+      const comment = comments[Math.floor(Math.random() * comments.length)];
+      console.log(`⌨️ Typing comment: "${comment}"`);
+
+      await commentBoxElement.type(comment, { delay: 80 });
+      console.log("✅ Comment typed successfully");
+
+      await page.waitForTimeout(2000);
+
+      // STEP 6: Click submit button
+      console.log("🔍 Looking for submit button...");
+
+      const submitButtonSelectors = [
+        "#submit-button button",
+        "ytd-button-renderer#submit-button button",
+        'button[aria-label="Comment"]',
+        'ytd-commentbox button[aria-label="Comment"]',
+      ];
+
+      let submitClicked = false;
+
+      // Try specific selectors first
+      for (const selector of submitButtonSelectors) {
+        try {
+          console.log(`   ⚡ Trying: ${selector}`);
+          const btn = await page.$(selector);
+
+          if (btn) {
+            const isVisible = await btn.isVisible();
+            const isDisabled = await btn.isDisabled();
+
+            console.log(`      Visible: ${isVisible}, Disabled: ${isDisabled}`);
+
+            if (isVisible && !isDisabled) {
+              await btn.click();
+              console.log(`   ✅ Clicked submit button: ${selector}`);
+              submitClicked = true;
+              break;
+            }
+          }
+        } catch (e) {
+          console.log(`   ❌ Failed: ${e.message}`);
+        }
+      }
+
+      // Fallback: Search all buttons
+      if (!submitClicked) {
+        console.log("\n⚡ Fallback: Searching all buttons for submit...");
+
+        const buttonFound = await page.evaluate(() => {
+          const buttons = Array.from(document.querySelectorAll("button"));
+
+          for (const btn of buttons) {
+            const ariaLabel = btn.getAttribute("aria-label") || "";
+            const id = btn.getAttribute("id") || "";
+            const text = btn.textContent?.trim() || "";
+
+            if (
+              id.includes("submit-button") ||
+              (text === "Comment" && btn.offsetParent !== null) ||
+              (ariaLabel === "Comment" && btn.offsetParent !== null)
+            ) {
+              const rect = btn.getBoundingClientRect();
+              if (rect.width > 0 && rect.height > 0 && !btn.disabled) {
+                console.log(`✅ Found submit button: "${ariaLabel || text}"`);
+                btn.setAttribute("data-yt-submit-btn", "true");
+                return true;
+              }
+            }
+          }
+          return false;
+        });
+
+        if (buttonFound) {
+          await page.waitForTimeout(500);
+          await page.click('[data-yt-submit-btn="true"]');
+          console.log("   ✅ Clicked submit button (Fallback)");
+          submitClicked = true;
+        }
+      }
+
+      if (!submitClicked) {
+        console.log("❌ Submit button not found or not clickable");
+        try {
+          await page.keyboard.press("Escape");
+        } catch {}
+        return false;
+      }
+
+      console.log("✅ Comment submitted!");
+      await page.waitForTimeout(2500);
+
+      // STEP 7: Close comment panel
+      console.log("🔙 Closing comment panel...");
+      await page.keyboard.press("Escape");
+      await page.waitForTimeout(1000);
+
+      console.log(`✅ Comment process completed: "${comment}"`);
+      return true;
+
     } catch (e) {
-      console.log("⚠️ Comment failed:", e.message);
+      console.log("❌ Comment failed:", e.message);
+
+      // Try to close comment panel on error
       try {
         await page.keyboard.press("Escape");
+        await page.waitForTimeout(500);
       } catch {}
+
       return false;
     }
   }
 
+  // ============================================
+  // MAIN SCROLL LOOP
+  // ============================================
   try {
-    // Navigate to YouTube Shorts
     console.log("🏠 Navigating to YouTube Shorts...");
     await page.goto("https://www.youtube.com/shorts", {
       waitUntil: "networkidle",
@@ -10977,12 +11672,13 @@ async function youtubeScrollBot(page, accountId, options = {}) {
     let consecutiveErrors = 0;
     const MAX_CONSECUTIVE_ERRORS = 10;
 
-    // Start infinite scroll loop
     while (!activeScrollBots[accountId]?.shouldStop) {
       scrollIteration++;
-      console.log(`\n⬇️ Scroll iteration: ${scrollIteration}`);
+      console.log(`\n${"=".repeat(50)}`);
+      console.log(`⬇️ Scroll iteration: ${scrollIteration}`);
+      console.log(`${"=".repeat(50)}`);
 
-      // Scroll to next short (Arrow Down or swipe)
+      // Scroll to next short
       await page.keyboard.press("ArrowDown");
       await page.waitForTimeout(3000 + Math.floor(Math.random() * 2000));
 
@@ -11008,18 +11704,39 @@ async function youtubeScrollBot(page, accountId, options = {}) {
 
         if (activeScrollBots[accountId]?.shouldStop) break;
 
-        // 💬 COMMENT
+        // 💬 COMMENT (FIXED - Now passes no parameters, uses closure)
         if (Math.random() * 100 < commentChance) {
-          await performComment();
+          activeScrollBots[accountId].stats.commentAttempts++;
+          console.log(
+            `💬 Comment attempt ${activeScrollBots[accountId].stats.commentAttempts}...`
+          );
+
+          const commentSuccess = await performComment();
+
+          if (commentSuccess) {
+            activeScrollBots[accountId].stats.comments++;
+            console.log(
+              `✅ Comment SUCCESS! (Total: ${activeScrollBots[accountId].stats.comments})`
+            );
+          } else {
+            activeScrollBots[accountId].stats.commentsFailed++;
+            console.log(
+              `❌ Comment FAILED (Total failed: ${activeScrollBots[accountId].stats.commentsFailed})`
+            );
+          }
+
+          // Extra wait after comment attempt
+          await page.waitForTimeout(2000 + Math.floor(Math.random() * 2000));
         }
 
         consecutiveErrors = 0;
       } catch (err) {
         console.log("⚠️ Interaction error:", err.message);
+        activeScrollBots[accountId].stats.errors.push(err.message);
         consecutiveErrors++;
 
         if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
-          console.log("❌ Too many errors, stopping");
+          console.log("❌ Too many consecutive errors, stopping bot");
           break;
         }
       }
@@ -11039,24 +11756,43 @@ async function youtubeScrollBot(page, accountId, options = {}) {
       }
     }
 
+    // ============================================
+    // FINAL STATS
+    // ============================================
     const finalStats = activeScrollBots[accountId].stats;
     const duration = Math.floor((Date.now() - finalStats.startTime) / 1000);
+    const commentSuccessRate =
+      finalStats.commentAttempts > 0
+        ? Math.round((finalStats.comments / finalStats.commentAttempts) * 100)
+        : 0;
 
-    console.log("\n✅ YouTube Shorts scroll bot stopped");
-    console.log(
-      `📊 Stats: Scrolls: ${finalStats.scrolls} | Likes: ${finalStats.likes} | Comments: ${finalStats.comments}`
-    );
-    console.log(`⏱️ Duration: ${duration}s`);
+    console.log("\n" + "=".repeat(60));
+    console.log("✅ YouTube Shorts scroll bot STOPPED");
+    console.log("=".repeat(60));
+    console.log(`📊 Final Statistics:`);
+    console.log(`   🔄 Scrolls: ${finalStats.scrolls}`);
+    console.log(`   ❤️  Likes: ${finalStats.likes}`);
+    console.log(`   💬 Comments Posted: ${finalStats.comments}`);
+    console.log(`   📝 Comment Attempts: ${finalStats.commentAttempts}`);
+    console.log(`   ❌ Comments Failed: ${finalStats.commentsFailed}`);
+    console.log(`   ✅ Comment Success Rate: ${commentSuccessRate}%`);
+    console.log(`   ⏱️  Duration: ${duration}s (${Math.floor(duration / 60)}m)`);
+    console.log(`   ⚠️  Total Errors: ${finalStats.errors.length}`);
+    console.log("=".repeat(60));
 
     delete activeScrollBots[accountId];
 
     return {
       success: true,
       message: "YouTube Shorts scrolling stopped",
-      stats: { ...finalStats, duration: `${duration}s` },
+      stats: {
+        ...finalStats,
+        duration: `${duration}s`,
+        commentSuccessRate: `${commentSuccessRate}%`,
+      },
     };
   } catch (error) {
-    console.error("❌ YouTube bot error:", error.message);
+    console.error("❌ YouTube bot fatal error:", error.message);
 
     if (activeScrollBots[accountId]) {
       activeScrollBots[accountId].stats.errors.push(error.message);
@@ -11067,6 +11803,7 @@ async function youtubeScrollBot(page, accountId, options = {}) {
     return {
       success: false,
       message: error.message,
+      error: error.stack,
     };
   }
 }
