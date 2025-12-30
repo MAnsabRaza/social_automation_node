@@ -56,6 +56,9 @@ const LOGIN_URL = {
   tiktok: "https://www.tiktok.com/login/phone-or-email/email",
   twitter: "https://twitter.com/login",
   linkedin: "https://www.linkedin.com/login",
+  google_business:
+    "https://accounts.google.com/ServiceLogin?service=lbc&passive=true&continue=https://business.google.com/&hl=en", // Add this
+  trustpilot: "https://www.trustpilot.com/users/connect",
 };
 let activeBrowsers = {}; // store browsers and pages
 let activeContexts = {};
@@ -119,7 +122,7 @@ app.post("/login-social", async (req, res) => {
     await page.waitForTimeout(2500);
 
     switch (platform) {
-      case "instagram":
+      case "instagram": {
         await page.waitForSelector('input[name="username"]', {
           timeout: 30000,
         });
@@ -130,23 +133,74 @@ app.post("/login-social", async (req, res) => {
         await page.click("text=Not now").catch(() => {});
         await page.click('button:has-text("Not Now")').catch(() => {});
         break;
+      }
 
-      case "facebook":
+      case "facebook": {
         await page.waitForSelector("#email", { timeout: 20000 });
         await page.fill("#email", username);
         await page.fill("#pass", password);
         await page.click('button[name="login"]');
         await page.waitForTimeout(5000);
         break;
+      }
 
-      case "twitter":
+      case "google_business": {
+        console.log("🏢 Starting Google Business login flow...");
+
+        await page.waitForSelector('input[type="email"]', { timeout: 20000 });
+        await page.fill('input[type="email"]', username);
+        console.log("✅ Email entered");
+
+        await page.keyboard.press("Enter");
+        await page.waitForTimeout(3000);
+
+        await page.waitForSelector('input[type="password"]', {
+          timeout: 20000,
+        });
+        await page.fill('input[type="password"]', password);
+        console.log("✅ Password entered");
+
+        await page.keyboard.press("Enter");
+        await page.waitForTimeout(5000);
+
+        try {
+          const verificationVisible = await page
+            .locator("text=Verify")
+            .isVisible({ timeout: 5000 })
+            .catch(() => false);
+          if (verificationVisible) {
+            console.log("⚠️ 2FA/Verification detected - waiting 30 seconds...");
+            await page.waitForTimeout(30000);
+          }
+        } catch (e) {
+          console.log("No verification needed");
+        }
+
+        try {
+          await page.waitForURL("**/business.google.com/**", {
+            timeout: 15000,
+          });
+          console.log("✅ Successfully redirected to Google Business");
+        } catch (e) {
+          const currentUrl = page.url();
+          console.log("⚠️ Current URL:", currentUrl);
+          if (currentUrl.includes("accounts.google.com")) {
+            console.log("⚠️ Still on login page - possible login issue");
+          }
+        }
+
+        await page.waitForTimeout(5000);
+        console.log("✅ Google Business login completed!");
+        break;
+      }
+
+      case "twitter": {
         console.log("🐦 Starting Twitter login flow...");
         const twitterEmail = req.body.email || username;
         const twitterUsername = req.body.twitter_username || username;
 
         await page.waitForTimeout(3000);
 
-        // Email entry
         const emailSelectors = [
           'input[autocomplete="username"]',
           'input[name="text"]',
@@ -174,7 +228,6 @@ app.post("/login-social", async (req, res) => {
         await page.keyboard.press("Enter");
         await page.waitForTimeout(4000);
 
-        // Username if required
         try {
           const usernameInput = await page.waitForSelector(
             'input[data-testid="ocfEnterTextTextInput"]',
@@ -187,7 +240,6 @@ app.post("/login-social", async (req, res) => {
           }
         } catch (e) {}
 
-        // Password
         const passwordInput = await page.waitForSelector(
           'input[name="password"]',
           { timeout: 8000 }
@@ -197,15 +249,15 @@ app.post("/login-social", async (req, res) => {
         await page.keyboard.press("Enter");
         await page.waitForTimeout(8000);
         break;
+      }
 
-      case "tiktok":
+      case "tiktok": {
         console.log("🎵 Starting TikTok login flow...");
         const tiktokEmail = req.body.email || username;
         console.log("📧 Using email:", tiktokEmail);
 
         await page.waitForTimeout(4000);
 
-        // Enter Email
         const tiktokEmailSelectors = [
           'input[type="text"]',
           'input[name="email"]',
@@ -231,7 +283,6 @@ app.post("/login-social", async (req, res) => {
         if (!tiktokEmailEntered)
           throw new Error("Could not find TikTok email input");
 
-        // Enter Password
         const tiktokPasswordSelectors = [
           'input[type="password"]',
           'input[name="password"]',
@@ -257,7 +308,6 @@ app.post("/login-social", async (req, res) => {
         if (!tiktokPasswordEntered)
           throw new Error("Could not find TikTok password input");
 
-        // Click Login
         await page.waitForTimeout(1000);
         const tiktokLoginSelectors = [
           'button[type="submit"]',
@@ -282,7 +332,6 @@ app.post("/login-social", async (req, res) => {
 
         await page.waitForTimeout(8000);
 
-        // Check for CAPTCHA
         const captchaVisible = await page
           .locator('div:has-text("Verify")')
           .isVisible({ timeout: 3000 })
@@ -292,7 +341,6 @@ app.post("/login-social", async (req, res) => {
           await page.waitForTimeout(45000);
         }
 
-        // Wait for successful redirect
         try {
           await page.waitForURL("**/foryou**", { timeout: 15000 });
           console.log("✅ Successfully redirected to TikTok home");
@@ -304,20 +352,247 @@ app.post("/login-social", async (req, res) => {
           }
         }
 
-        // Extra wait for cookies to settle
         await page.waitForTimeout(5000);
         console.log("✅ TikTok login completed!");
         break;
+      }
 
-      case "linkedin":
+      case "linkedin": {
         await page.waitForSelector("#username", { timeout: 20000 });
         await page.fill("#username", username);
         await page.fill("#password", password);
         await page.click('button[type="submit"]');
         await page.waitForTimeout(5000);
         break;
+      }
 
-      case "youtube":
+      case "trustpilot": {
+        console.log("⭐ Starting Trustpilot login flow...");
+
+        await page.waitForTimeout(3000);
+
+        console.log("🔍 Looking for 'Continue with Google' button...");
+        const continueWithGoogleSelectors = [
+          'button:has-text("Continue with Google")',
+          'a:has-text("Continue with Google")',
+          '[data-provider="google"]',
+          'button[name="google"]',
+          ".social-button--google",
+        ];
+
+        let googleButtonClicked = false;
+        for (const selector of continueWithGoogleSelectors) {
+          try {
+            const btn = page.locator(selector).first();
+            if (await btn.isVisible({ timeout: 3000 })) {
+              await btn.click();
+              console.log("✅ Clicked 'Continue with Google' button");
+              googleButtonClicked = true;
+              break;
+            }
+          } catch (e) {
+            continue;
+          }
+        }
+
+        if (!googleButtonClicked) {
+          throw new Error("Could not find 'Continue with Google' button");
+        }
+
+        await page.waitForTimeout(3000);
+        console.log("⏳ Google login page loading...");
+
+        console.log("📧 Entering email...");
+        const googleEmailSelectors = [
+          'input[type="email"]',
+          'input[id="identifierId"]',
+          'input[name="identifier"]',
+        ];
+
+        let trustpilotEmailEntered = false;
+        for (const selector of googleEmailSelectors) {
+          try {
+            const input = await page.waitForSelector(selector, {
+              timeout: 5000,
+              state: "visible",
+            });
+            if (input) {
+              await input.fill(username);
+              console.log("✅ Email entered");
+              trustpilotEmailEntered = true;
+              break;
+            }
+          } catch (e) {
+            continue;
+          }
+        }
+
+        if (!trustpilotEmailEntered) {
+          throw new Error("Could not find Google email input");
+        }
+
+        await page.waitForTimeout(1000);
+        const nextButtonSelectors = [
+          'button:has-text("Next")',
+          "#identifierNext",
+          'button[type="button"]',
+        ];
+
+        let nextClicked = false;
+        for (const selector of nextButtonSelectors) {
+          try {
+            const btn = page.locator(selector).first();
+            if (await btn.isVisible({ timeout: 3000 })) {
+              await btn.click();
+              console.log("✅ Clicked Next button");
+              nextClicked = true;
+              break;
+            }
+          } catch (e) {
+            continue;
+          }
+        }
+
+        if (!nextClicked) {
+          await page.keyboard.press("Enter");
+          console.log("✅ Pressed Enter as fallback");
+        }
+
+        await page.waitForTimeout(3000);
+
+        console.log("🔐 Entering password...");
+        const googlePasswordSelectors = [
+          'input[type="password"]',
+          'input[name="password"]',
+          'input[name="Passwd"]',
+        ];
+
+        let trustpilotPasswordEntered = false;
+        for (const selector of googlePasswordSelectors) {
+          try {
+            const input = await page.waitForSelector(selector, {
+              timeout: 8000,
+              state: "visible",
+            });
+            if (input) {
+              await input.fill(password);
+              console.log("✅ Password entered");
+              trustpilotPasswordEntered = true;
+              break;
+            }
+          } catch (e) {
+            continue;
+          }
+        }
+
+        if (!trustpilotPasswordEntered) {
+          throw new Error("Could not find Google password input");
+        }
+
+        await page.waitForTimeout(1000);
+        const passwordNextSelectors = [
+          'button:has-text("Next")',
+          "#passwordNext",
+          'button[type="button"]',
+        ];
+
+        let passwordNextClicked = false;
+        for (const selector of passwordNextSelectors) {
+          try {
+            const btn = page.locator(selector).first();
+            if (await btn.isVisible({ timeout: 3000 })) {
+              await btn.click();
+              console.log("✅ Clicked Next button after password");
+              passwordNextClicked = true;
+              break;
+            }
+          } catch (e) {
+            continue;
+          }
+        }
+
+        if (!passwordNextClicked) {
+          await page.keyboard.press("Enter");
+          console.log("✅ Pressed Enter as fallback");
+        }
+
+        await page.waitForTimeout(5000);
+
+        try {
+          const twoFactorVisible = await page
+            .locator("text=2-Step Verification")
+            .or(page.locator("text=Verify"))
+            .or(page.locator("text=verification code"))
+            .isVisible({ timeout: 5000 })
+            .catch(() => false);
+
+          if (twoFactorVisible) {
+            console.log(
+              "⚠️ 2FA detected - waiting 45 seconds for manual verification..."
+            );
+            await page.waitForTimeout(45000);
+          }
+        } catch (e) {
+          console.log("No 2FA needed");
+        }
+
+        try {
+          const continueButtonVisible = await page
+            .locator('button:has-text("Continue")')
+            .or(page.locator('button:has-text("Allow")'))
+            .or(page.locator('button:has-text("Confirm")'))
+            .isVisible({ timeout: 5000 })
+            .catch(() => false);
+
+          if (continueButtonVisible) {
+            console.log("📝 Found consent screen, clicking Continue...");
+            await page
+              .locator('button:has-text("Continue")')
+              .first()
+              .click()
+              .catch(() => {
+                page.locator('button:has-text("Allow")').first().click();
+              });
+            await page.waitForTimeout(3000);
+          }
+        } catch (e) {
+          console.log("No consent screen");
+        }
+
+        await page.waitForTimeout(5000);
+
+        const trustpilotFinalUrl = page.url();
+        console.log("📍 Final URL:", trustpilotFinalUrl);
+
+        if (
+          trustpilotFinalUrl.includes("/connect") ||
+          trustpilotFinalUrl.includes("/authenticate")
+        ) {
+          console.log("⚠️ Still on login page - checking for errors");
+
+          const errorVisible = await page
+            .locator("text=incorrect")
+            .or(page.locator("text=wrong"))
+            .or(page.locator("text=invalid"))
+            .or(page.locator("text=couldn't sign you in"))
+            .isVisible({ timeout: 2000 })
+            .catch(() => false);
+
+          if (errorVisible) {
+            throw new Error(
+              "Login failed - incorrect credentials or authorization denied"
+            );
+          }
+        } else {
+          console.log("✅ Successfully logged in to Trustpilot via Google");
+        }
+
+        await page.waitForTimeout(3000);
+        console.log("✅ Trustpilot Google login completed!");
+        break;
+      }
+
+      case "youtube": {
         await page.waitForSelector('input[type="email"]', { timeout: 20000 });
         await page.fill("input[type=email]", username);
         await page.keyboard.press("Enter");
@@ -326,6 +601,7 @@ app.post("/login-social", async (req, res) => {
         await page.keyboard.press("Enter");
         await page.waitForTimeout(5000);
         break;
+      }
     }
 
     // Final wait for all platforms
@@ -425,6 +701,7 @@ app.post("/check-login", async (req, res) => {
       linkedin: "https://www.linkedin.com/feed/",
       youtube: "https://www.youtube.com/",
       tiktok: "https://www.tiktok.com/foryou",
+      google_business: "https://business.google.com/",
     };
 
     await page.goto(homeUrls[platform] || LOGIN_URL[platform], {
@@ -9596,53 +9873,67 @@ async function facebookScrollBot(page, accountId, options = {}) {
       // First, take screenshot of post for debugging
       const debugInfo = await post.evaluate((postEl) => {
         const buttons = postEl.querySelectorAll('[role="button"]');
-        const spans = postEl.querySelectorAll('span');
+        const spans = postEl.querySelectorAll("span");
         const divs = postEl.querySelectorAll('div[tabindex="0"]');
-        
-        const buttonInfo = Array.from(buttons).slice(0, 10).map(btn => ({
-          text: btn.textContent.trim().substring(0, 30),
-          ariaLabel: btn.getAttribute('aria-label'),
-          html: btn.innerHTML.substring(0, 100)
-        }));
-        
-        const spanInfo = Array.from(spans).slice(0, 20).map(span => ({
-          text: span.textContent.trim()
-        })).filter(s => s.text.length > 0 && s.text.length < 20);
-        
-        return { buttons: buttonInfo, spans: spanInfo, totalButtons: buttons.length, totalDivs: divs.length };
+
+        const buttonInfo = Array.from(buttons)
+          .slice(0, 10)
+          .map((btn) => ({
+            text: btn.textContent.trim().substring(0, 30),
+            ariaLabel: btn.getAttribute("aria-label"),
+            html: btn.innerHTML.substring(0, 100),
+          }));
+
+        const spanInfo = Array.from(spans)
+          .slice(0, 20)
+          .map((span) => ({
+            text: span.textContent.trim(),
+          }))
+          .filter((s) => s.text.length > 0 && s.text.length < 20);
+
+        return {
+          buttons: buttonInfo,
+          spans: spanInfo,
+          totalButtons: buttons.length,
+          totalDivs: divs.length,
+        };
       });
-      
+
       console.log("📊 Post structure:", JSON.stringify(debugInfo, null, 2));
 
       const result = await post.evaluate((postEl) => {
         try {
           // MEGA STRATEGY: Find ALL possible Like indicators
-          
+
           // Check if already liked first
           const checkIfLiked = () => {
-            const allElements = postEl.querySelectorAll('[aria-label]');
+            const allElements = postEl.querySelectorAll("[aria-label]");
             for (const el of allElements) {
-              const label = (el.getAttribute('aria-label') || '').toLowerCase();
-              if (label.includes('unlike') || label.includes('remove like')) {
+              const label = (el.getAttribute("aria-label") || "").toLowerCase();
+              if (label.includes("unlike") || label.includes("remove like")) {
                 return true;
               }
             }
             return false;
           };
-          
+
           if (checkIfLiked()) {
-            return { success: false, message: "Already liked", alreadyLiked: true };
+            return {
+              success: false,
+              message: "Already liked",
+              alreadyLiked: true,
+            };
           }
 
           // Method 1: Click ANY span with text "Like"
           const clickLikeSpan = () => {
-            const allSpans = postEl.querySelectorAll('span');
+            const allSpans = postEl.querySelectorAll("span");
             for (const span of allSpans) {
               const text = span.textContent.trim();
               if (text === "Like" || text === "لائک" || text === "پسند") {
                 // Try clicking the span itself
                 span.click();
-                
+
                 // Also try parent elements
                 const parents = [
                   span.parentElement,
@@ -9650,15 +9941,15 @@ async function facebookScrollBot(page, accountId, options = {}) {
                   span.parentElement?.parentElement?.parentElement,
                   span.closest('[role="button"]'),
                   span.closest('div[tabindex="0"]'),
-                  span.closest('div[aria-label]')
+                  span.closest("div[aria-label]"),
                 ];
-                
+
                 for (const parent of parents) {
                   if (parent) {
                     parent.click();
                   }
                 }
-                
+
                 return true;
               }
             }
@@ -9667,11 +9958,15 @@ async function facebookScrollBot(page, accountId, options = {}) {
 
           // Method 2: Find button with "Like" in aria-label
           const clickByAriaLabel = () => {
-            const elements = postEl.querySelectorAll('[aria-label]');
+            const elements = postEl.querySelectorAll("[aria-label]");
             for (const el of elements) {
-              const label = (el.getAttribute('aria-label') || '').toLowerCase();
-              if (label.includes('like') && !label.includes('unlike') && 
-                  !label.includes('comment') && !label.includes('share')) {
+              const label = (el.getAttribute("aria-label") || "").toLowerCase();
+              if (
+                label.includes("like") &&
+                !label.includes("unlike") &&
+                !label.includes("comment") &&
+                !label.includes("share")
+              ) {
                 el.click();
                 return true;
               }
@@ -9683,25 +9978,35 @@ async function facebookScrollBot(page, accountId, options = {}) {
           const clickFirstAction = () => {
             // Find all role="button" in the post
             const buttons = postEl.querySelectorAll('[role="button"]');
-            
+
             // Look for action buttons (usually in a row)
             for (let i = 0; i < Math.min(buttons.length, 5); i++) {
               const btn = buttons[i];
               const rect = btn.getBoundingClientRect();
-              
+
               // Must be visible
               if (rect.width > 30 && rect.height > 20) {
                 const text = btn.textContent.toLowerCase();
-                const ariaLabel = (btn.getAttribute('aria-label') || '').toLowerCase();
-                
+                const ariaLabel = (
+                  btn.getAttribute("aria-label") || ""
+                ).toLowerCase();
+
                 // Skip if it's clearly not Like
-                if (text.includes('comment') || text.includes('share') || 
-                    ariaLabel.includes('comment') || ariaLabel.includes('share')) {
+                if (
+                  text.includes("comment") ||
+                  text.includes("share") ||
+                  ariaLabel.includes("comment") ||
+                  ariaLabel.includes("share")
+                ) {
                   continue;
                 }
-                
+
                 // If it has "like" or is the first action button, click it
-                if (text.includes('like') || ariaLabel.includes('like') || i === 0) {
+                if (
+                  text.includes("like") ||
+                  ariaLabel.includes("like") ||
+                  i === 0
+                ) {
                   btn.click();
                   return true;
                 }
@@ -9719,7 +10024,7 @@ async function facebookScrollBot(page, accountId, options = {}) {
               '[role="button"][aria-label*="Like"]',
               'span:contains("Like")',
             ];
-            
+
             for (const selector of selectors) {
               try {
                 const el = postEl.querySelector(selector);
@@ -9736,24 +10041,31 @@ async function facebookScrollBot(page, accountId, options = {}) {
 
           // Method 5: Find by SVG thumbs up icon
           const clickBySVG = () => {
-            const svgs = postEl.querySelectorAll('svg');
+            const svgs = postEl.querySelectorAll("svg");
             for (const svg of svgs) {
-              const parent = svg.closest('[role="button"]') || 
-                           svg.closest('div[tabindex="0"]') ||
-                           svg.closest('[aria-label]');
-              
+              const parent =
+                svg.closest('[role="button"]') ||
+                svg.closest('div[tabindex="0"]') ||
+                svg.closest("[aria-label]");
+
               if (parent) {
-                const label = (parent.getAttribute('aria-label') || '').toLowerCase();
-                
+                const label = (
+                  parent.getAttribute("aria-label") || ""
+                ).toLowerCase();
+
                 // Skip if already liked or is comment/share
-                if (label.includes('unlike') || label.includes('comment') || label.includes('share')) {
+                if (
+                  label.includes("unlike") ||
+                  label.includes("comment") ||
+                  label.includes("share")
+                ) {
                   continue;
                 }
-                
+
                 // Check SVG path for thumbs up pattern
-                const path = svg.querySelector('path');
+                const path = svg.querySelector("path");
                 if (path) {
-                  const d = path.getAttribute('d') || '';
+                  const d = path.getAttribute("d") || "";
                   // Thumbs up has specific path
                   if (d.length > 30) {
                     parent.click();
@@ -9772,16 +10084,16 @@ async function facebookScrollBot(page, accountId, options = {}) {
             if (buttons.length > 0) {
               const firstButton = buttons[0];
               const rect = firstButton.getBoundingClientRect();
-              
+
               // Create and dispatch click event at button location
-              const clickEvent = new MouseEvent('click', {
+              const clickEvent = new MouseEvent("click", {
                 bubbles: true,
                 cancelable: true,
                 view: window,
                 clientX: rect.left + rect.width / 2,
-                clientY: rect.top + rect.height / 2
+                clientY: rect.top + rect.height / 2,
               });
-              
+
               firstButton.dispatchEvent(clickEvent);
               return true;
             }
@@ -9790,22 +10102,28 @@ async function facebookScrollBot(page, accountId, options = {}) {
 
           // Try all methods in sequence
           console.log("Trying Method 1: Click Like span");
-          if (clickLikeSpan()) return { success: true, message: "Clicked via span" };
-          
+          if (clickLikeSpan())
+            return { success: true, message: "Clicked via span" };
+
           console.log("Trying Method 2: Click by aria-label");
-          if (clickByAriaLabel()) return { success: true, message: "Clicked via aria-label" };
-          
+          if (clickByAriaLabel())
+            return { success: true, message: "Clicked via aria-label" };
+
           console.log("Trying Method 3: Click first action");
-          if (clickFirstAction()) return { success: true, message: "Clicked first action" };
-          
+          if (clickFirstAction())
+            return { success: true, message: "Clicked first action" };
+
           console.log("Trying Method 4: Click by selector");
-          if (clickBySelector()) return { success: true, message: "Clicked via selector" };
-          
+          if (clickBySelector())
+            return { success: true, message: "Clicked via selector" };
+
           console.log("Trying Method 5: Click by SVG");
-          if (clickBySVG()) return { success: true, message: "Clicked via SVG" };
-          
+          if (clickBySVG())
+            return { success: true, message: "Clicked via SVG" };
+
           console.log("Trying Method 6: Click by coordinates");
-          if (clickByCoordinates()) return { success: true, message: "Clicked via coordinates" };
+          if (clickByCoordinates())
+            return { success: true, message: "Clicked via coordinates" };
 
           return { success: false, message: "All methods failed" };
         } catch (e) {
@@ -9820,7 +10138,9 @@ async function facebookScrollBot(page, accountId, options = {}) {
 
       if (result.success) {
         activeScrollBots[accountId].stats.likes++;
-        console.log(`❤️ [Facebook] Liked! (Total: ${activeScrollBots[accountId].stats.likes}) - Method: ${result.message}`);
+        console.log(
+          `❤️ [Facebook] Liked! (Total: ${activeScrollBots[accountId].stats.likes}) - Method: ${result.message}`
+        );
         await page.waitForTimeout(1500 + Math.floor(Math.random() * 1500));
         return true;
       }
@@ -9845,33 +10165,39 @@ async function facebookScrollBot(page, accountId, options = {}) {
       const commentClicked = await post.evaluate((postEl) => {
         try {
           // Method 1: Click span with "Comment" text
-          const allSpans = postEl.querySelectorAll('span');
+          const allSpans = postEl.querySelectorAll("span");
           for (const span of allSpans) {
             const text = span.textContent.trim();
             if (text === "Comment" || text === "کمنٹ" || text === "تبصرہ") {
               // Click span and all parent elements
               span.click();
-              
+
               const parents = [
                 span.parentElement,
                 span.parentElement?.parentElement,
                 span.closest('[role="button"]'),
-                span.closest('div[tabindex="0"]')
+                span.closest('div[tabindex="0"]'),
               ];
-              
-              parents.forEach(p => p?.click());
-              
+
+              parents.forEach((p) => p?.click());
+
               return { success: true, method: "span" };
             }
           }
 
           // Method 2: Find by aria-label
-          const allElements = postEl.querySelectorAll('[role="button"], div[tabindex="0"], [aria-label]');
+          const allElements = postEl.querySelectorAll(
+            '[role="button"], div[tabindex="0"], [aria-label]'
+          );
           for (const el of allElements) {
-            const label = (el.getAttribute('aria-label') || '').toLowerCase();
+            const label = (el.getAttribute("aria-label") || "").toLowerCase();
             const text = el.textContent.trim().toLowerCase();
-            
-            if (label.includes('comment') || text.includes('comment') || text.includes('کمنٹ')) {
+
+            if (
+              label.includes("comment") ||
+              text.includes("comment") ||
+              text.includes("کمنٹ")
+            ) {
               el.click();
               return { success: true, method: "aria-label" };
             }
@@ -9891,7 +10217,9 @@ async function facebookScrollBot(page, accountId, options = {}) {
       });
 
       if (!commentClicked.success) {
-        console.log(`⚠️ Could not click comment button: ${commentClicked.message}`);
+        console.log(
+          `⚠️ Could not click comment button: ${commentClicked.message}`
+        );
         return false;
       }
 
@@ -9904,35 +10232,37 @@ async function facebookScrollBot(page, accountId, options = {}) {
       // Use Playwright's native type function instead of evaluate
       try {
         // Wait for ANY contenteditable to appear
-        await page.waitForSelector('[contenteditable="true"]', { timeout: 5000 });
-        
+        await page.waitForSelector('[contenteditable="true"]', {
+          timeout: 5000,
+        });
+
         // Get all contenteditable elements
         const editables = await page.locator('[contenteditable="true"]').all();
-        
+
         console.log(`Found ${editables.length} contenteditable elements`);
-        
+
         if (editables.length > 0) {
           // Use the last one (most recently added)
           const commentBox = editables[editables.length - 1];
-          
+
           // Click to focus
           await commentBox.click();
           await page.waitForTimeout(500);
-          
+
           // Type the comment using Playwright's type method
           await commentBox.fill(comment);
           await page.waitForTimeout(500);
-          
+
           // Also try typing character by character
           await commentBox.type(comment, { delay: 50 });
-          
+
           console.log(`✅ Comment typed: "${comment}"`);
           await page.waitForTimeout(2000);
-          
+
           // Step 3: Submit - Press Enter
           await page.keyboard.press("Enter");
           await page.waitForTimeout(1500);
-          
+
           // Also try clicking Post button
           const postClicked = await page.evaluate(() => {
             const buttons = document.querySelectorAll('[role="button"]');
@@ -9945,14 +10275,16 @@ async function facebookScrollBot(page, accountId, options = {}) {
             }
             return false;
           });
-          
+
           if (postClicked) {
             console.log("✅ Also clicked Post button");
           }
-          
+
           activeScrollBots[accountId].stats.comments++;
-          console.log(`💬 [Facebook] Commented: "${comment}" (Total: ${activeScrollBots[accountId].stats.comments})`);
-          
+          console.log(
+            `💬 [Facebook] Commented: "${comment}" (Total: ${activeScrollBots[accountId].stats.comments})`
+          );
+
           await page.waitForTimeout(3000);
           return true;
         } else {
@@ -10012,9 +10344,9 @@ async function facebookScrollBot(page, accountId, options = {}) {
       // Big scroll
       const scrollAmount = 1000 + Math.floor(Math.random() * 800);
       await page.evaluate((amount) => {
-        window.scrollBy({ top: amount, behavior: 'smooth' });
+        window.scrollBy({ top: amount, behavior: "smooth" });
       }, scrollAmount);
-      
+
       await page.waitForTimeout(4000 + Math.floor(Math.random() * 2000));
 
       activeScrollBots[accountId].stats.scrolls = scrollIteration;
@@ -10048,7 +10380,7 @@ async function facebookScrollBot(page, accountId, options = {}) {
         try {
           // Simple post ID
           const postId = await post.evaluate((el, idx) => {
-            const text = el.textContent.substring(0, 30).replace(/\s+/g, '');
+            const text = el.textContent.substring(0, 30).replace(/\s+/g, "");
             return `${idx}-${text}-${Date.now()}`;
           }, i);
 
@@ -10058,7 +10390,9 @@ async function facebookScrollBot(page, accountId, options = {}) {
             continue;
           }
 
-          console.log(`\n🎯 Processing post ${i + 1}/${Math.min(posts.length, 2)}`);
+          console.log(
+            `\n🎯 Processing post ${i + 1}/${Math.min(posts.length, 2)}`
+          );
           processedPosts.add(postId);
           processedInThisIteration = true;
 
@@ -10077,14 +10411,20 @@ async function facebookScrollBot(page, accountId, options = {}) {
           // ❤️ TRY TO LIKE
           const likeRoll = Math.random() * 100;
           const shouldLike = likeRoll < likeChance;
-          console.log(`🎲 Like roll: ${likeRoll.toFixed(1)} - ${shouldLike ? '✅ YES' : '❌ NO'} (need < ${likeChance})`);
-          
+          console.log(
+            `🎲 Like roll: ${likeRoll.toFixed(1)} - ${
+              shouldLike ? "✅ YES" : "❌ NO"
+            } (need < ${likeChance})`
+          );
+
           if (shouldLike) {
             console.log("▶️ Executing LIKE action...");
             const liked = await performLike(post);
-            
+
             if (liked) {
-              await page.waitForTimeout(2000 + Math.floor(Math.random() * 2000));
+              await page.waitForTimeout(
+                2000 + Math.floor(Math.random() * 2000)
+              );
             } else {
               console.log("❌ Like action failed");
             }
@@ -10095,38 +10435,45 @@ async function facebookScrollBot(page, accountId, options = {}) {
           // 💬 TRY TO COMMENT
           const commentRoll = Math.random() * 100;
           const shouldComment = commentRoll < commentChance;
-          console.log(`🎲 Comment roll: ${commentRoll.toFixed(1)} - ${shouldComment ? '✅ YES' : '❌ NO'} (need < ${commentChance})`);
-          
+          console.log(
+            `🎲 Comment roll: ${commentRoll.toFixed(1)} - ${
+              shouldComment ? "✅ YES" : "❌ NO"
+            } (need < ${commentChance})`
+          );
+
           if (shouldComment) {
             console.log("▶️ Executing COMMENT action...");
             const commented = await performComment(post);
-            
+
             if (!commented) {
               console.log("❌ Comment action failed");
             }
           }
 
           await page.waitForTimeout(2000);
-
         } catch (err) {
           console.log("⚠️ Post interaction error:", err.message);
-          activeScrollBots[accountId].stats.errors.push(`Interaction: ${err.message}`);
+          activeScrollBots[accountId].stats.errors.push(
+            `Interaction: ${err.message}`
+          );
         }
       }
 
       // Handle being stuck
       if (!processedInThisIteration) {
         consecutiveSkips++;
-        console.log(`⚠️ No new posts processed (${consecutiveSkips}/${MAX_CONSECUTIVE_SKIPS})`);
-        
+        console.log(
+          `⚠️ No new posts processed (${consecutiveSkips}/${MAX_CONSECUTIVE_SKIPS})`
+        );
+
         if (consecutiveSkips >= MAX_CONSECUTIVE_SKIPS) {
           console.log("🔄 Clearing cache and doing BIG scroll...");
           processedPosts.clear();
           consecutiveSkips = 0;
-          
+
           // Do a really big scroll
           await page.evaluate(() => {
-            window.scrollBy({ top: 2000, behavior: 'smooth' });
+            window.scrollBy({ top: 2000, behavior: "smooth" });
           });
           await page.waitForTimeout(5000);
         }
@@ -10158,7 +10505,11 @@ async function facebookScrollBot(page, accountId, options = {}) {
     console.log(`   ❤️  Total Likes:      ${finalStats.likes}`);
     console.log(`   💬 Total Comments:   ${finalStats.comments}`);
     console.log(`   🎯 Total Attempts:   ${finalStats.attempts}`);
-    console.log(`   ⏱️  Duration:         ${duration}s (${Math.floor(duration/60)}m ${duration%60}s)`);
+    console.log(
+      `   ⏱️  Duration:         ${duration}s (${Math.floor(duration / 60)}m ${
+        duration % 60
+      }s)`
+    );
     console.log(`   ⚠️  Errors:           ${finalStats.errors.length}`);
     console.log(`${"=".repeat(60)}`);
 
@@ -10745,7 +11096,7 @@ async function tiktokScrollBot(page, accountId, options = {}) {
         .first()
         .isVisible({ timeout: 3000 })
         .catch(() => false);
-      
+
       if (loginButton) {
         console.log("❌ Found 'Log in' button - not logged in");
         return false;
@@ -10765,7 +11116,7 @@ async function tiktokScrollBot(page, accountId, options = {}) {
           .first()
           .isVisible({ timeout: 2000 })
           .catch(() => false);
-        
+
         if (element) {
           console.log(`✅ Logged in (found: ${selector})`);
           return true;
@@ -10843,7 +11194,9 @@ async function tiktokScrollBot(page, accountId, options = {}) {
         try {
           const likeButton = videoContainer.locator(strategy.selector).first();
 
-          if (await likeButton.isVisible({ timeout: 2000 }).catch(() => false)) {
+          if (
+            await likeButton.isVisible({ timeout: 2000 }).catch(() => false)
+          ) {
             await likeButton.scrollIntoViewIfNeeded({ timeout: 1000 });
             await page.waitForTimeout(300 + Math.floor(Math.random() * 200));
             await likeButton.click({ timeout: 2000 });
@@ -10964,7 +11317,9 @@ async function tiktokScrollBot(page, accountId, options = {}) {
       for (const selector of postButtonSelectors) {
         try {
           const postButton = page.locator(selector).first();
-          if (await postButton.isVisible({ timeout: 2000 }).catch(() => false)) {
+          if (
+            await postButton.isVisible({ timeout: 2000 }).catch(() => false)
+          ) {
             await postButton.click({ timeout: 2000 });
             console.log("✅ Comment posted");
             posted = true;
@@ -10982,7 +11337,9 @@ async function tiktokScrollBot(page, accountId, options = {}) {
       }
 
       activeScrollBots[accountId].stats.comments++;
-      console.log(`✅ Comment success! (Total: ${activeScrollBots[accountId].stats.comments})`);
+      console.log(
+        `✅ Comment success! (Total: ${activeScrollBots[accountId].stats.comments})`
+      );
 
       await page.waitForTimeout(2000);
       await page.keyboard.press("Escape");
@@ -11007,7 +11364,9 @@ async function tiktokScrollBot(page, accountId, options = {}) {
         .locator('[data-e2e="share-icon"], [data-e2e="browse-share"]')
         .first();
 
-      if (!(await shareButton.isVisible({ timeout: 2000 }).catch(() => false))) {
+      if (
+        !(await shareButton.isVisible({ timeout: 2000 }).catch(() => false))
+      ) {
         console.log("⚠️ Share button not visible");
         return false;
       }
@@ -11017,12 +11376,14 @@ async function tiktokScrollBot(page, accountId, options = {}) {
       await shareButton.click({ timeout: 2000 });
 
       activeScrollBots[accountId].stats.shares++;
-      console.log(`🔗 Shared! (Total: ${activeScrollBots[accountId].stats.shares})`);
-      
+      console.log(
+        `🔗 Shared! (Total: ${activeScrollBots[accountId].stats.shares})`
+      );
+
       await page.waitForTimeout(1000);
       await page.keyboard.press("Escape");
       await page.waitForTimeout(500);
-      
+
       return true;
     } catch (e) {
       console.log("⚠️ Share failed:", e.message);
@@ -11061,8 +11422,10 @@ async function tiktokScrollBot(page, accountId, options = {}) {
 
     if (!isLoggedIn) {
       console.log("❌ Not logged in!");
-      console.log("⚠️ Please log in manually in the browser, then start the bot again.");
-      
+      console.log(
+        "⚠️ Please log in manually in the browser, then start the bot again."
+      );
+
       delete activeScrollBots[accountId];
       return {
         success: false,
@@ -11150,13 +11513,17 @@ async function tiktokScrollBot(page, accountId, options = {}) {
         // 💬 COMMENT
         if (Math.random() * 100 < commentChance) {
           activeScrollBots[accountId].stats.commentAttempts++;
-          console.log(`💬 Comment attempt ${activeScrollBots[accountId].stats.commentAttempts}`);
+          console.log(
+            `💬 Comment attempt ${activeScrollBots[accountId].stats.commentAttempts}`
+          );
 
           const commentSuccess = await performComment(videoContainer);
 
           if (!commentSuccess) {
             activeScrollBots[accountId].stats.commentsFailed++;
-            console.log(`❌ Failed (Total: ${activeScrollBots[accountId].stats.commentsFailed})`);
+            console.log(
+              `❌ Failed (Total: ${activeScrollBots[accountId].stats.commentsFailed})`
+            );
           }
 
           await page.waitForTimeout(2000 + Math.floor(Math.random() * 2000));
@@ -11275,7 +11642,10 @@ async function youtubeScrollBot(page, accountId, options = {}) {
         for (const btn of buttons) {
           const ariaLabel = btn.getAttribute("aria-label") || "";
           const isPressed = btn.getAttribute("aria-pressed") === "true";
-          if (ariaLabel.toLowerCase().includes("like this video") && isPressed) {
+          if (
+            ariaLabel.toLowerCase().includes("like this video") &&
+            isPressed
+          ) {
             return true;
           }
         }
@@ -11296,7 +11666,10 @@ async function youtubeScrollBot(page, accountId, options = {}) {
         for (const btn of buttons) {
           const ariaLabel = btn.getAttribute("aria-label") || "";
           const isPressed = btn.getAttribute("aria-pressed") === "true";
-          if (ariaLabel.toLowerCase().includes("like this video") && !isPressed) {
+          if (
+            ariaLabel.toLowerCase().includes("like this video") &&
+            !isPressed
+          ) {
             btn.click();
             console.log("✅ Like button clicked");
             return true;
@@ -11307,7 +11680,9 @@ async function youtubeScrollBot(page, accountId, options = {}) {
 
       if (liked) {
         activeScrollBots[accountId].stats.likes++;
-        console.log(`❤️ Liked! (Total: ${activeScrollBots[accountId].stats.likes})`);
+        console.log(
+          `❤️ Liked! (Total: ${activeScrollBots[accountId].stats.likes})`
+        );
         await page.waitForTimeout(1000 + Math.floor(Math.random() * 1500));
         return true;
       }
@@ -11327,7 +11702,7 @@ async function youtubeScrollBot(page, accountId, options = {}) {
 
       // STEP 1: Open comment panel - Method 1 (aria-label)
       console.log("🔍 Method 1: Looking for comment button via aria-label...");
-      
+
       let commentPanelOpened = false;
 
       try {
@@ -11528,7 +11903,7 @@ async function youtubeScrollBot(page, accountId, options = {}) {
 
       if (!activeInput) {
         console.log("❌ Could not find active contenteditable input");
-        
+
         // Try using the marked element
         const markedBox = await page.$('[data-yt-comment-box="true"]');
         if (!markedBox) {
@@ -11537,13 +11912,13 @@ async function youtubeScrollBot(page, accountId, options = {}) {
           } catch {}
           return false;
         }
-        
+
         console.log("✅ Using fallback comment box");
         await markedBox.click();
         await page.waitForTimeout(500);
         await markedBox.click();
         await page.waitForTimeout(500);
-        
+
         commentBoxElement = markedBox;
       } else {
         console.log("✅ Found active input");
@@ -11651,7 +12026,6 @@ async function youtubeScrollBot(page, accountId, options = {}) {
 
       console.log(`✅ Comment process completed: "${comment}"`);
       return true;
-
     } catch (e) {
       console.log("❌ Comment failed:", e.message);
 
@@ -11786,7 +12160,9 @@ async function youtubeScrollBot(page, accountId, options = {}) {
     console.log(`   📝 Comment Attempts: ${finalStats.commentAttempts}`);
     console.log(`   ❌ Comments Failed: ${finalStats.commentsFailed}`);
     console.log(`   ✅ Comment Success Rate: ${commentSuccessRate}%`);
-    console.log(`   ⏱️  Duration: ${duration}s (${Math.floor(duration / 60)}m)`);
+    console.log(
+      `   ⏱️  Duration: ${duration}s (${Math.floor(duration / 60)}m)`
+    );
     console.log(`   ⚠️  Total Errors: ${finalStats.errors.length}`);
     console.log("=".repeat(60));
 
