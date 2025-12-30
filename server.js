@@ -365,232 +365,42 @@ app.post("/login-social", async (req, res) => {
         await page.waitForTimeout(5000);
         break;
       }
+case "trustpilot": {
+  console.log("⭐ Trustpilot → Continue with Google");
 
-      case "trustpilot": {
-        console.log("⭐ Starting Trustpilot login flow...");
+  // 1️⃣ Open Trustpilot login
+  await page.goto("https://www.trustpilot.com/users/connect", {
+    waitUntil: "networkidle", // wait for all requests
+  });
 
-        await page.waitForTimeout(3000);
+  // 2️⃣ Wait for the login box to appear
+  const loginContainer = page.locator('text=Log in or sign up below');
+  await loginContainer.waitFor({ state: "visible", timeout: 10000 });
 
-        console.log("🔍 Looking for 'Continue with Google' button...");
-        const continueWithGoogleSelectors = [
-          'button:has-text("Continue with Google")',
-          'a:has-text("Continue with Google")',
-          '[data-provider="google"]',
-          'button[name="google"]',
-          ".social-button--google",
-        ];
+  // 3️⃣ Wait for "Continue with Google" button
+  const googleBtn = page.locator('button:has-text("Continue with Google")').first();
 
-        let googleButtonClicked = false;
-        for (const selector of continueWithGoogleSelectors) {
-          try {
-            const btn = page.locator(selector).first();
-            if (await btn.isVisible({ timeout: 3000 })) {
-              await btn.click();
-              console.log("✅ Clicked 'Continue with Google' button");
-              googleButtonClicked = true;
-              break;
-            }
-          } catch (e) {
-            continue;
-          }
-        }
+  try {
+    await googleBtn.waitFor({ state: "visible", timeout: 10000 });
+    await googleBtn.scrollIntoViewIfNeeded();
+    await googleBtn.click();
+    console.log("✅ Clicked Continue with Google");
+  } catch (e) {
+    await page.screenshot({ path: "trustpilot-google-not-found.png" });
+    throw new Error("❌ Continue with Google button not found");
+  }
 
-        if (!googleButtonClicked) {
-          throw new Error("Could not find 'Continue with Google' button");
-        }
+  // 4️⃣ Wait for Google login page
+  await page.waitForURL(/accounts\.google\.com/, {
+    timeout: 20000,
+  });
 
-        await page.waitForTimeout(3000);
-        console.log("⏳ Google login page loading...");
+  console.log("✅ Redirected to Google login");
 
-        console.log("📧 Entering email...");
-        const googleEmailSelectors = [
-          'input[type="email"]',
-          'input[id="identifierId"]',
-          'input[name="identifier"]',
-        ];
+  break;
+}
 
-        let trustpilotEmailEntered = false;
-        for (const selector of googleEmailSelectors) {
-          try {
-            const input = await page.waitForSelector(selector, {
-              timeout: 5000,
-              state: "visible",
-            });
-            if (input) {
-              await input.fill(username);
-              console.log("✅ Email entered");
-              trustpilotEmailEntered = true;
-              break;
-            }
-          } catch (e) {
-            continue;
-          }
-        }
 
-        if (!trustpilotEmailEntered) {
-          throw new Error("Could not find Google email input");
-        }
-
-        await page.waitForTimeout(1000);
-        const nextButtonSelectors = [
-          'button:has-text("Next")',
-          "#identifierNext",
-          'button[type="button"]',
-        ];
-
-        let nextClicked = false;
-        for (const selector of nextButtonSelectors) {
-          try {
-            const btn = page.locator(selector).first();
-            if (await btn.isVisible({ timeout: 3000 })) {
-              await btn.click();
-              console.log("✅ Clicked Next button");
-              nextClicked = true;
-              break;
-            }
-          } catch (e) {
-            continue;
-          }
-        }
-
-        if (!nextClicked) {
-          await page.keyboard.press("Enter");
-          console.log("✅ Pressed Enter as fallback");
-        }
-
-        await page.waitForTimeout(3000);
-
-        console.log("🔐 Entering password...");
-        const googlePasswordSelectors = [
-          'input[type="password"]',
-          'input[name="password"]',
-          'input[name="Passwd"]',
-        ];
-
-        let trustpilotPasswordEntered = false;
-        for (const selector of googlePasswordSelectors) {
-          try {
-            const input = await page.waitForSelector(selector, {
-              timeout: 8000,
-              state: "visible",
-            });
-            if (input) {
-              await input.fill(password);
-              console.log("✅ Password entered");
-              trustpilotPasswordEntered = true;
-              break;
-            }
-          } catch (e) {
-            continue;
-          }
-        }
-
-        if (!trustpilotPasswordEntered) {
-          throw new Error("Could not find Google password input");
-        }
-
-        await page.waitForTimeout(1000);
-        const passwordNextSelectors = [
-          'button:has-text("Next")',
-          "#passwordNext",
-          'button[type="button"]',
-        ];
-
-        let passwordNextClicked = false;
-        for (const selector of passwordNextSelectors) {
-          try {
-            const btn = page.locator(selector).first();
-            if (await btn.isVisible({ timeout: 3000 })) {
-              await btn.click();
-              console.log("✅ Clicked Next button after password");
-              passwordNextClicked = true;
-              break;
-            }
-          } catch (e) {
-            continue;
-          }
-        }
-
-        if (!passwordNextClicked) {
-          await page.keyboard.press("Enter");
-          console.log("✅ Pressed Enter as fallback");
-        }
-
-        await page.waitForTimeout(5000);
-
-        try {
-          const twoFactorVisible = await page
-            .locator("text=2-Step Verification")
-            .or(page.locator("text=Verify"))
-            .or(page.locator("text=verification code"))
-            .isVisible({ timeout: 5000 })
-            .catch(() => false);
-
-          if (twoFactorVisible) {
-            console.log(
-              "⚠️ 2FA detected - waiting 45 seconds for manual verification..."
-            );
-            await page.waitForTimeout(45000);
-          }
-        } catch (e) {
-          console.log("No 2FA needed");
-        }
-
-        try {
-          const continueButtonVisible = await page
-            .locator('button:has-text("Continue")')
-            .or(page.locator('button:has-text("Allow")'))
-            .or(page.locator('button:has-text("Confirm")'))
-            .isVisible({ timeout: 5000 })
-            .catch(() => false);
-
-          if (continueButtonVisible) {
-            console.log("📝 Found consent screen, clicking Continue...");
-            await page
-              .locator('button:has-text("Continue")')
-              .first()
-              .click()
-              .catch(() => {
-                page.locator('button:has-text("Allow")').first().click();
-              });
-            await page.waitForTimeout(3000);
-          }
-        } catch (e) {
-          console.log("No consent screen");
-        }
-
-        await page.waitForTimeout(5000);
-
-        const trustpilotFinalUrl = page.url();
-        console.log("📍 Final URL:", trustpilotFinalUrl);
-
-        if (
-          trustpilotFinalUrl.includes("/connect") ||
-          trustpilotFinalUrl.includes("/authenticate")
-        ) {
-          console.log("⚠️ Still on login page - checking for errors");
-
-          const errorVisible = await page
-            .locator("text=incorrect")
-            .or(page.locator("text=wrong"))
-            .or(page.locator("text=invalid"))
-            .or(page.locator("text=couldn't sign you in"))
-            .isVisible({ timeout: 2000 })
-            .catch(() => false);
-
-          if (errorVisible) {
-            throw new Error(
-              "Login failed - incorrect credentials or authorization denied"
-            );
-          }
-        } else {
-          console.log("✅ Successfully logged in to Trustpilot via Google");
-        }
-
-        await page.waitForTimeout(3000);
-        console.log("✅ Trustpilot Google login completed!");
-        break;
-      }
 
       case "youtube": {
         await page.waitForSelector('input[type="email"]', { timeout: 20000 });
