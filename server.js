@@ -9586,132 +9586,246 @@ async function facebookScrollBot(page, accountId, options = {}) {
     },
   };
 
-  // Helper function to perform like action (LANGUAGE AGNOSTIC)
+  // ============================================
+  // BULLETPROOF LIKE FUNCTION - TRIES EVERYTHING
+  // ============================================
   async function performLike(post) {
     try {
       console.log("🔍 Attempting to like post...");
 
-      // Strategy 1: Find Like button by SVG icon and position (most reliable)
-      const likeClicked = await post.evaluate((postEl) => {
+      // First, take screenshot of post for debugging
+      const debugInfo = await post.evaluate((postEl) => {
+        const buttons = postEl.querySelectorAll('[role="button"]');
+        const spans = postEl.querySelectorAll('span');
+        const divs = postEl.querySelectorAll('div[tabindex="0"]');
+        
+        const buttonInfo = Array.from(buttons).slice(0, 10).map(btn => ({
+          text: btn.textContent.trim().substring(0, 30),
+          ariaLabel: btn.getAttribute('aria-label'),
+          html: btn.innerHTML.substring(0, 100)
+        }));
+        
+        const spanInfo = Array.from(spans).slice(0, 20).map(span => ({
+          text: span.textContent.trim()
+        })).filter(s => s.text.length > 0 && s.text.length < 20);
+        
+        return { buttons: buttonInfo, spans: spanInfo, totalButtons: buttons.length, totalDivs: divs.length };
+      });
+      
+      console.log("📊 Post structure:", JSON.stringify(debugInfo, null, 2));
+
+      const result = await post.evaluate((postEl) => {
         try {
-          // Method 1: Find buttons in the action bar
-          const actionButtons = postEl.querySelectorAll(
-            'div[role="button"], span[role="button"]'
-          );
-
-          // The Like button is typically the FIRST interactive button in the action bar
-          // Look for buttons that have SVG icons (Like, Comment, Share)
-          const buttonsArray = Array.from(actionButtons);
-
-          for (let i = 0; i < Math.min(buttonsArray.length, 5); i++) {
-            const btn = buttonsArray[i];
-            const ariaLabel = (
-              btn.getAttribute("aria-label") || ""
-            ).toLowerCase();
-
-            // Check if this looks like an already-liked button
-            if (ariaLabel.includes("remove") || ariaLabel.includes("unlike")) {
-              console.log("Post already liked");
-              return { success: false, alreadyLiked: true };
+          // MEGA STRATEGY: Find ALL possible Like indicators
+          
+          // Check if already liked first
+          const checkIfLiked = () => {
+            const allElements = postEl.querySelectorAll('[aria-label]');
+            for (const el of allElements) {
+              const label = (el.getAttribute('aria-label') || '').toLowerCase();
+              if (label.includes('unlike') || label.includes('remove like')) {
+                return true;
+              }
             }
+            return false;
+          };
+          
+          if (checkIfLiked()) {
+            return { success: false, message: "Already liked", alreadyLiked: true };
+          }
 
-            // Check if button has thumbs-up SVG (Like button indicator)
-            const svg = btn.querySelector("svg");
-            if (svg) {
-              const svgPath = svg.querySelector("path");
-              if (svgPath) {
-                const pathD = svgPath.getAttribute("d");
-                // Thumbs up icon has specific path patterns
-                // Also check if it's the first actionable button
-                if (
-                  i === 0 ||
-                  ariaLabel.includes("like") ||
-                  (pathD && pathD.length > 50 && pathD.includes("M"))
-                ) {
-                  // Extra check: make sure it's not Share or other button
-                  if (
-                    !ariaLabel.includes("share") &&
-                    !ariaLabel.includes("comment")
-                  ) {
-                    btn.click();
-                    console.log("Clicked Like button at position:", i);
-                    return { success: true, alreadyLiked: false };
+          // Method 1: Click ANY span with text "Like"
+          const clickLikeSpan = () => {
+            const allSpans = postEl.querySelectorAll('span');
+            for (const span of allSpans) {
+              const text = span.textContent.trim();
+              if (text === "Like" || text === "لائک" || text === "پسند") {
+                // Try clicking the span itself
+                span.click();
+                
+                // Also try parent elements
+                const parents = [
+                  span.parentElement,
+                  span.parentElement?.parentElement,
+                  span.parentElement?.parentElement?.parentElement,
+                  span.closest('[role="button"]'),
+                  span.closest('div[tabindex="0"]'),
+                  span.closest('div[aria-label]')
+                ];
+                
+                for (const parent of parents) {
+                  if (parent) {
+                    parent.click();
+                  }
+                }
+                
+                return true;
+              }
+            }
+            return false;
+          };
+
+          // Method 2: Find button with "Like" in aria-label
+          const clickByAriaLabel = () => {
+            const elements = postEl.querySelectorAll('[aria-label]');
+            for (const el of elements) {
+              const label = (el.getAttribute('aria-label') || '').toLowerCase();
+              if (label.includes('like') && !label.includes('unlike') && 
+                  !label.includes('comment') && !label.includes('share')) {
+                el.click();
+                return true;
+              }
+            }
+            return false;
+          };
+
+          // Method 3: Click the FIRST clickable element in action row
+          const clickFirstAction = () => {
+            // Find all role="button" in the post
+            const buttons = postEl.querySelectorAll('[role="button"]');
+            
+            // Look for action buttons (usually in a row)
+            for (let i = 0; i < Math.min(buttons.length, 5); i++) {
+              const btn = buttons[i];
+              const rect = btn.getBoundingClientRect();
+              
+              // Must be visible
+              if (rect.width > 30 && rect.height > 20) {
+                const text = btn.textContent.toLowerCase();
+                const ariaLabel = (btn.getAttribute('aria-label') || '').toLowerCase();
+                
+                // Skip if it's clearly not Like
+                if (text.includes('comment') || text.includes('share') || 
+                    ariaLabel.includes('comment') || ariaLabel.includes('share')) {
+                  continue;
+                }
+                
+                // If it has "like" or is the first action button, click it
+                if (text.includes('like') || ariaLabel.includes('like') || i === 0) {
+                  btn.click();
+                  return true;
+                }
+              }
+            }
+            return false;
+          };
+
+          // Method 4: Use CSS selector for Like button
+          const clickBySelector = () => {
+            // Try common Facebook Like button selectors
+            const selectors = [
+              'div[aria-label*="Like"]',
+              'div[aria-label*="like"]',
+              '[role="button"][aria-label*="Like"]',
+              'span:contains("Like")',
+            ];
+            
+            for (const selector of selectors) {
+              try {
+                const el = postEl.querySelector(selector);
+                if (el) {
+                  el.click();
+                  return true;
+                }
+              } catch (e) {
+                // Selector might not work
+              }
+            }
+            return false;
+          };
+
+          // Method 5: Find by SVG thumbs up icon
+          const clickBySVG = () => {
+            const svgs = postEl.querySelectorAll('svg');
+            for (const svg of svgs) {
+              const parent = svg.closest('[role="button"]') || 
+                           svg.closest('div[tabindex="0"]') ||
+                           svg.closest('[aria-label]');
+              
+              if (parent) {
+                const label = (parent.getAttribute('aria-label') || '').toLowerCase();
+                
+                // Skip if already liked or is comment/share
+                if (label.includes('unlike') || label.includes('comment') || label.includes('share')) {
+                  continue;
+                }
+                
+                // Check SVG path for thumbs up pattern
+                const path = svg.querySelector('path');
+                if (path) {
+                  const d = path.getAttribute('d') || '';
+                  // Thumbs up has specific path
+                  if (d.length > 30) {
+                    parent.click();
+                    return true;
                   }
                 }
               }
             }
-          }
+            return false;
+          };
 
-          // Method 2: Look specifically for Like-related aria-labels (any language)
-          for (const btn of buttonsArray) {
-            const ariaLabel = (
-              btn.getAttribute("aria-label") || ""
-            ).toLowerCase();
-
-            // Check multiple language variations
-            if (
-              ariaLabel === "like" ||
-              ariaLabel === "पसंद" || // Hindi
-              ariaLabel === "لائک" || // Urdu
-              ariaLabel === "beğen" || // Turkish
-              ariaLabel === "curtir" || // Portuguese
-              ariaLabel === "me gusta" || // Spanish
-              ariaLabel.startsWith("like") ||
-              ariaLabel.includes("thumbs up")
-            ) {
-              btn.click();
-              console.log("Clicked Like button by aria-label:", ariaLabel);
-              return { success: true, alreadyLiked: false };
+          // Method 6: NUCLEAR OPTION - Click coordinates
+          const clickByCoordinates = () => {
+            // Find action buttons area
+            const buttons = postEl.querySelectorAll('[role="button"]');
+            if (buttons.length > 0) {
+              const firstButton = buttons[0];
+              const rect = firstButton.getBoundingClientRect();
+              
+              // Create and dispatch click event at button location
+              const clickEvent = new MouseEvent('click', {
+                bubbles: true,
+                cancelable: true,
+                view: window,
+                clientX: rect.left + rect.width / 2,
+                clientY: rect.top + rect.height / 2
+              });
+              
+              firstButton.dispatchEvent(clickEvent);
+              return true;
             }
-          }
+            return false;
+          };
 
-          return { success: false, alreadyLiked: false };
+          // Try all methods in sequence
+          console.log("Trying Method 1: Click Like span");
+          if (clickLikeSpan()) return { success: true, message: "Clicked via span" };
+          
+          console.log("Trying Method 2: Click by aria-label");
+          if (clickByAriaLabel()) return { success: true, message: "Clicked via aria-label" };
+          
+          console.log("Trying Method 3: Click first action");
+          if (clickFirstAction()) return { success: true, message: "Clicked first action" };
+          
+          console.log("Trying Method 4: Click by selector");
+          if (clickBySelector()) return { success: true, message: "Clicked via selector" };
+          
+          console.log("Trying Method 5: Click by SVG");
+          if (clickBySVG()) return { success: true, message: "Clicked via SVG" };
+          
+          console.log("Trying Method 6: Click by coordinates");
+          if (clickByCoordinates()) return { success: true, message: "Clicked via coordinates" };
+
+          return { success: false, message: "All methods failed" };
         } catch (e) {
-          console.error("Error in like evaluation:", e);
-          return { success: false, alreadyLiked: false };
+          return { success: false, message: `Error: ${e.message}` };
         }
       });
 
-      if (likeClicked.alreadyLiked) {
+      if (result.alreadyLiked) {
         console.log("💙 Post already liked, skipping...");
         return false;
       }
 
-      if (likeClicked.success) {
+      if (result.success) {
         activeScrollBots[accountId].stats.likes++;
-        console.log(
-          `❤️ [Facebook] Liked! (Total: ${activeScrollBots[accountId].stats.likes})`
-        );
+        console.log(`❤️ [Facebook] Liked! (Total: ${activeScrollBots[accountId].stats.likes}) - Method: ${result.message}`);
         await page.waitForTimeout(1500 + Math.floor(Math.random() * 1500));
         return true;
       }
 
-      // Strategy 2: Fallback - Click first button with SVG
-      console.log("🔍 Trying fallback method...");
-
-      const buttons = await post.locator('div[role="button"]').all();
-
-      if (buttons.length > 0) {
-        // Usually Like is the first button
-        const firstButton = buttons[0];
-
-        try {
-          await firstButton.scrollIntoViewIfNeeded({ timeout: 1000 });
-          await page.waitForTimeout(300);
-          await firstButton.click({ timeout: 2000, force: true });
-
-          activeScrollBots[accountId].stats.likes++;
-          console.log(
-            `❤️ [Facebook] Liked via fallback! (Total: ${activeScrollBots[accountId].stats.likes})`
-          );
-          await page.waitForTimeout(1500 + Math.floor(Math.random() * 1500));
-          return true;
-        } catch (e) {
-          console.log("⚠️ Fallback click failed:", e.message);
-        }
-      }
-
-      console.log("⚠️ Could not find Like button");
+      console.log(`⚠️ Like failed: ${result.message}`);
       return false;
     } catch (e) {
       console.log("⚠️ Like attempt failed:", e.message);
@@ -9720,128 +9834,135 @@ async function facebookScrollBot(page, accountId, options = {}) {
     }
   }
 
-  // Helper function to perform comment action (LANGUAGE AGNOSTIC)
+  // ============================================
+  // BULLETPROOF COMMENT FUNCTION
+  // ============================================
   async function performComment(post) {
     try {
       console.log("🔍 Attempting to comment...");
 
-      // Step 1: Click comment button (usually second button in action bar)
+      // Step 1: Click Comment button - TRY EVERYTHING
       const commentClicked = await post.evaluate((postEl) => {
         try {
-          const actionButtons = postEl.querySelectorAll(
-            'div[role="button"], span[role="button"]'
-          );
-          const buttonsArray = Array.from(actionButtons);
-
-          // Method 1: Find by aria-label
-          for (const btn of buttonsArray) {
-            const ariaLabel = (
-              btn.getAttribute("aria-label") || ""
-            ).toLowerCase();
-
-            // Check multiple language variations for Comment
-            if (
-              ariaLabel.includes("comment") ||
-              ariaLabel.includes("کمنٹ") || // Urdu
-              ariaLabel.includes("टिप्पणी") || // Hindi
-              ariaLabel.includes("yorum") || // Turkish
-              ariaLabel.includes("comentar") || // Spanish/Portuguese
-              ariaLabel.includes("commenter") // French
-            ) {
-              btn.click();
-              console.log("Clicked Comment button by aria-label:", ariaLabel);
-              return true;
+          // Method 1: Click span with "Comment" text
+          const allSpans = postEl.querySelectorAll('span');
+          for (const span of allSpans) {
+            const text = span.textContent.trim();
+            if (text === "Comment" || text === "کمنٹ" || text === "تبصرہ") {
+              // Click span and all parent elements
+              span.click();
+              
+              const parents = [
+                span.parentElement,
+                span.parentElement?.parentElement,
+                span.closest('[role="button"]'),
+                span.closest('div[tabindex="0"]')
+              ];
+              
+              parents.forEach(p => p?.click());
+              
+              return { success: true, method: "span" };
             }
           }
 
-          // Method 2: Comment is usually the SECOND button (after Like)
-          if (buttonsArray.length >= 2) {
-            buttonsArray[1].click();
-            console.log("Clicked second button (Comment position)");
-            return true;
+          // Method 2: Find by aria-label
+          const allElements = postEl.querySelectorAll('[role="button"], div[tabindex="0"], [aria-label]');
+          for (const el of allElements) {
+            const label = (el.getAttribute('aria-label') || '').toLowerCase();
+            const text = el.textContent.trim().toLowerCase();
+            
+            if (label.includes('comment') || text.includes('comment') || text.includes('کمنٹ')) {
+              el.click();
+              return { success: true, method: "aria-label" };
+            }
           }
 
-          return false;
+          // Method 3: Click second action button (usually Comment)
+          const buttons = postEl.querySelectorAll('[role="button"]');
+          if (buttons.length >= 2) {
+            buttons[1].click(); // Second button is usually Comment
+            return { success: true, method: "second button" };
+          }
+
+          return { success: false, message: "Comment button not found" };
         } catch (e) {
-          console.error("Error clicking comment button:", e);
-          return false;
+          return { success: false, message: e.message };
         }
       });
 
-      if (!commentClicked) {
-        console.log("⚠️ Could not click comment button");
+      if (!commentClicked.success) {
+        console.log(`⚠️ Could not click comment button: ${commentClicked.message}`);
         return false;
       }
 
-      console.log("✅ Comment button clicked, waiting for input...");
-      await page.waitForTimeout(2000);
+      console.log(`✅ Comment button clicked via ${commentClicked.method}`);
+      await page.waitForTimeout(4000); // Long wait for box to appear
 
-      // Step 2: Find and fill comment input
+      // Step 2: Type in comment box - AGGRESSIVE APPROACH
       const comment = comments[Math.floor(Math.random() * comments.length)];
 
-      // Wait for comment box to appear
-      await page.waitForTimeout(1500);
-
-      // Strategy: Find any contenteditable div that appeared recently
-      const commentPosted = await page.evaluate((commentText) => {
-        try {
-          // Find all contenteditable elements
-          const editableDivs = document.querySelectorAll(
-            'div[contenteditable="true"]'
-          );
-
-          // Try the last one first (most recently opened)
-          for (let i = editableDivs.length - 1; i >= 0; i--) {
-            const div = editableDivs[i];
-
-            // Check if it's visible and empty
-            const rect = div.getBoundingClientRect();
-            if (rect.height > 0 && rect.width > 0) {
-              // Focus and type
-              div.focus();
-              div.click();
-
-              // Clear any placeholder
-              div.textContent = "";
-
-              // Insert text
-              div.textContent = commentText;
-
-              // Trigger input event
-              const inputEvent = new Event("input", { bubbles: true });
-              div.dispatchEvent(inputEvent);
-
-              console.log("Comment typed:", commentText);
-              return true;
+      // Use Playwright's native type function instead of evaluate
+      try {
+        // Wait for ANY contenteditable to appear
+        await page.waitForSelector('[contenteditable="true"]', { timeout: 5000 });
+        
+        // Get all contenteditable elements
+        const editables = await page.locator('[contenteditable="true"]').all();
+        
+        console.log(`Found ${editables.length} contenteditable elements`);
+        
+        if (editables.length > 0) {
+          // Use the last one (most recently added)
+          const commentBox = editables[editables.length - 1];
+          
+          // Click to focus
+          await commentBox.click();
+          await page.waitForTimeout(500);
+          
+          // Type the comment using Playwright's type method
+          await commentBox.fill(comment);
+          await page.waitForTimeout(500);
+          
+          // Also try typing character by character
+          await commentBox.type(comment, { delay: 50 });
+          
+          console.log(`✅ Comment typed: "${comment}"`);
+          await page.waitForTimeout(2000);
+          
+          // Step 3: Submit - Press Enter
+          await page.keyboard.press("Enter");
+          await page.waitForTimeout(1500);
+          
+          // Also try clicking Post button
+          const postClicked = await page.evaluate(() => {
+            const buttons = document.querySelectorAll('[role="button"]');
+            for (const btn of buttons) {
+              const text = btn.textContent.trim();
+              if (text === "Post" || text === "پوسٹ") {
+                btn.click();
+                return true;
+              }
             }
+            return false;
+          });
+          
+          if (postClicked) {
+            console.log("✅ Also clicked Post button");
           }
-
-          return false;
-        } catch (e) {
-          console.error("Error typing comment:", e);
+          
+          activeScrollBots[accountId].stats.comments++;
+          console.log(`💬 [Facebook] Commented: "${comment}" (Total: ${activeScrollBots[accountId].stats.comments})`);
+          
+          await page.waitForTimeout(3000);
+          return true;
+        } else {
+          console.log("⚠️ No contenteditable found");
           return false;
         }
-      }, comment);
-
-      if (!commentPosted) {
-        console.log("⚠️ Could not type comment");
+      } catch (e) {
+        console.log(`⚠️ Comment typing failed: ${e.message}`);
         return false;
       }
-
-      // Wait a bit before pressing Enter
-      await page.waitForTimeout(1000);
-
-      // Press Enter to submit
-      await page.keyboard.press("Enter");
-      await page.waitForTimeout(1000);
-
-      activeScrollBots[accountId].stats.comments++;
-      console.log(
-        `💬 [Facebook] Commented: "${comment}" (Total: ${activeScrollBots[accountId].stats.comments})`
-      );
-      await page.waitForTimeout(2000 + Math.floor(Math.random() * 2000));
-
-      return true;
     } catch (e) {
       console.log("⚠️ Comment attempt failed:", e.message);
       activeScrollBots[accountId].stats.errors.push(`Comment: ${e.message}`);
@@ -9849,6 +9970,9 @@ async function facebookScrollBot(page, accountId, options = {}) {
     }
   }
 
+  // ============================================
+  // MAIN SCROLLING LOGIC
+  // ============================================
   try {
     console.log("🏠 Navigating to Facebook feed...");
     await page.goto("https://www.facebook.com/", {
@@ -9856,8 +9980,7 @@ async function facebookScrollBot(page, accountId, options = {}) {
       timeout: 30000,
     });
 
-    // Wait for feed to load
-    await page.waitForTimeout(6000);
+    await page.waitForTimeout(5000);
 
     // Verify login
     const currentUrl = page.url();
@@ -9874,26 +9997,30 @@ async function facebookScrollBot(page, accountId, options = {}) {
 
     let scrollIteration = 0;
     let consecutiveErrors = 0;
-    const MAX_CONSECUTIVE_ERRORS = 10;
+    let consecutiveSkips = 0;
+    const MAX_CONSECUTIVE_ERRORS = 15;
+    const MAX_CONSECUTIVE_SKIPS = 3;
+    const processedPosts = new Set();
 
     // 🔄 INFINITE LOOP
     while (!activeScrollBots[accountId]?.shouldStop) {
       scrollIteration++;
-      console.log(`\n⬇️ [Facebook] Scroll iteration: ${scrollIteration}`);
+      console.log(`\n${"=".repeat(60)}`);
+      console.log(`⬇️ [Facebook] Scroll iteration: ${scrollIteration}`);
+      console.log(`${"=".repeat(60)}`);
 
-      // Scroll smoothly
-      const scrollAmount = 600 + Math.floor(Math.random() * 400);
-      await page.mouse.wheel(0, scrollAmount);
-      await page.waitForTimeout(2500 + Math.floor(Math.random() * 2000));
+      // Big scroll
+      const scrollAmount = 1000 + Math.floor(Math.random() * 800);
+      await page.evaluate((amount) => {
+        window.scrollBy({ top: amount, behavior: 'smooth' });
+      }, scrollAmount);
+      
+      await page.waitForTimeout(4000 + Math.floor(Math.random() * 2000));
 
       activeScrollBots[accountId].stats.scrolls = scrollIteration;
 
-      // Get Facebook posts - try multiple selectors
-      let posts = await page.locator('div[role="article"]').all();
-
-      if (posts.length === 0) {
-        posts = await page.locator('div[data-pagelet^="FeedUnit"]').all();
-      }
+      // Find posts
+      const posts = await page.locator('div[role="article"]').all();
 
       if (posts.length === 0) {
         console.log("⚠️ No posts found, continuing to scroll...");
@@ -9909,52 +10036,113 @@ async function facebookScrollBot(page, accountId, options = {}) {
       consecutiveErrors = 0;
       console.log(`📊 Found ${posts.length} posts on screen`);
 
-      // Pick a random post from visible posts
-      const postIndex = Math.floor(Math.random() * Math.min(posts.length, 4));
-      const post = posts[postIndex];
+      // Process posts
+      let processedInThisIteration = false;
 
-      try {
-        // Scroll post into view
-        await post.scrollIntoViewIfNeeded({ timeout: 3000 });
-        await page.waitForTimeout(2000);
-
+      // Try to process up to 2 posts per scroll
+      for (let i = 0; i < Math.min(posts.length, 2); i++) {
         if (activeScrollBots[accountId]?.shouldStop) break;
 
-        activeScrollBots[accountId].stats.attempts++;
+        const post = posts[i];
 
-        // ❤️ LIKE ACTION
-        if (Math.random() * 100 < likeChance) {
-          await performLike(post);
+        try {
+          // Simple post ID
+          const postId = await post.evaluate((el, idx) => {
+            const text = el.textContent.substring(0, 30).replace(/\s+/g, '');
+            return `${idx}-${text}-${Date.now()}`;
+          }, i);
 
-          // Wait a bit between like and comment
-          await page.waitForTimeout(1000 + Math.floor(Math.random() * 1000));
+          // Skip if processed recently
+          if (processedPosts.has(postId)) {
+            console.log(`⏭️ Post ${i + 1} already processed`);
+            continue;
+          }
+
+          console.log(`\n🎯 Processing post ${i + 1}/${Math.min(posts.length, 2)}`);
+          processedPosts.add(postId);
+          processedInThisIteration = true;
+
+          // Keep cache manageable
+          if (processedPosts.size > 20) {
+            const oldestKey = Array.from(processedPosts)[0];
+            processedPosts.delete(oldestKey);
+          }
+
+          // Scroll into view
+          await post.scrollIntoViewIfNeeded({ timeout: 3000 });
+          await page.waitForTimeout(2000);
+
+          activeScrollBots[accountId].stats.attempts++;
+
+          // ❤️ TRY TO LIKE
+          const likeRoll = Math.random() * 100;
+          const shouldLike = likeRoll < likeChance;
+          console.log(`🎲 Like roll: ${likeRoll.toFixed(1)} - ${shouldLike ? '✅ YES' : '❌ NO'} (need < ${likeChance})`);
+          
+          if (shouldLike) {
+            console.log("▶️ Executing LIKE action...");
+            const liked = await performLike(post);
+            
+            if (liked) {
+              await page.waitForTimeout(2000 + Math.floor(Math.random() * 2000));
+            } else {
+              console.log("❌ Like action failed");
+            }
+          }
+
+          if (activeScrollBots[accountId]?.shouldStop) break;
+
+          // 💬 TRY TO COMMENT
+          const commentRoll = Math.random() * 100;
+          const shouldComment = commentRoll < commentChance;
+          console.log(`🎲 Comment roll: ${commentRoll.toFixed(1)} - ${shouldComment ? '✅ YES' : '❌ NO'} (need < ${commentChance})`);
+          
+          if (shouldComment) {
+            console.log("▶️ Executing COMMENT action...");
+            const commented = await performComment(post);
+            
+            if (!commented) {
+              console.log("❌ Comment action failed");
+            }
+          }
+
+          await page.waitForTimeout(2000);
+
+        } catch (err) {
+          console.log("⚠️ Post interaction error:", err.message);
+          activeScrollBots[accountId].stats.errors.push(`Interaction: ${err.message}`);
         }
-
-        if (activeScrollBots[accountId]?.shouldStop) break;
-
-        // 💬 COMMENT ACTION
-        if (Math.random() * 100 < commentChance) {
-          await performComment(post);
-        }
-      } catch (err) {
-        console.log("⚠️ Post interaction error:", err.message);
-        activeScrollBots[accountId].stats.errors.push(
-          `Interaction: ${err.message}`
-        );
-        consecutiveErrors++;
       }
 
-      // Random pause every 4-7 scrolls
-      if (scrollIteration % (4 + Math.floor(Math.random() * 4)) === 0) {
-        const pauseDuration = 3000 + Math.floor(Math.random() * 4000);
-        console.log(
-          `⏸️ Taking a ${Math.floor(pauseDuration / 1000)}s break...`
-        );
+      // Handle being stuck
+      if (!processedInThisIteration) {
+        consecutiveSkips++;
+        console.log(`⚠️ No new posts processed (${consecutiveSkips}/${MAX_CONSECUTIVE_SKIPS})`);
+        
+        if (consecutiveSkips >= MAX_CONSECUTIVE_SKIPS) {
+          console.log("🔄 Clearing cache and doing BIG scroll...");
+          processedPosts.clear();
+          consecutiveSkips = 0;
+          
+          // Do a really big scroll
+          await page.evaluate(() => {
+            window.scrollBy({ top: 2000, behavior: 'smooth' });
+          });
+          await page.waitForTimeout(5000);
+        }
+      } else {
+        consecutiveSkips = 0;
+      }
+
+      // Periodic break
+      if (scrollIteration % 5 === 0) {
+        const pauseDuration = 6000 + Math.floor(Math.random() * 4000);
+        console.log(`⏸️ Break time: ${Math.floor(pauseDuration / 1000)}s`);
         await page.waitForTimeout(pauseDuration);
       }
 
       if (activeScrollBots[accountId]?.shouldStop) {
-        console.log("🛑 Stop signal received - ending Facebook bot");
+        console.log("🛑 Stop signal received");
         break;
       }
     }
@@ -9962,14 +10150,17 @@ async function facebookScrollBot(page, accountId, options = {}) {
     const finalStats = activeScrollBots[accountId].stats;
     const duration = Math.floor((Date.now() - finalStats.startTime) / 1000);
 
-    console.log("\n✅ Facebook scroll bot stopped");
-    console.log(`📊 Final Stats:`);
-    console.log(`   - Scrolls: ${finalStats.scrolls}`);
-    console.log(`   - Likes: ${finalStats.likes}`);
-    console.log(`   - Comments: ${finalStats.comments}`);
-    console.log(`   - Attempts: ${finalStats.attempts}`);
-    console.log(`   - Duration: ${duration}s`);
-    console.log(`   - Errors: ${finalStats.errors.length}`);
+    console.log(`\n${"=".repeat(60)}`);
+    console.log("✅ Facebook scroll bot STOPPED");
+    console.log(`${"=".repeat(60)}`);
+    console.log(`📊 FINAL STATISTICS:`);
+    console.log(`   🔢 Total Scrolls:    ${finalStats.scrolls}`);
+    console.log(`   ❤️  Total Likes:      ${finalStats.likes}`);
+    console.log(`   💬 Total Comments:   ${finalStats.comments}`);
+    console.log(`   🎯 Total Attempts:   ${finalStats.attempts}`);
+    console.log(`   ⏱️  Duration:         ${duration}s (${Math.floor(duration/60)}m ${duration%60}s)`);
+    console.log(`   ⚠️  Errors:           ${finalStats.errors.length}`);
+    console.log(`${"=".repeat(60)}`);
 
     delete activeScrollBots[accountId];
 
@@ -10511,11 +10702,9 @@ async function tiktokScrollBot(page, accountId, options = {}) {
       "Can't stop watching! 🤩",
       "Perfect! ❤️",
     ],
-    email = null,
-    password = null,
   } = options;
 
-  // Initialize bot state with detailed tracking
+  // Initialize bot state
   activeScrollBots[accountId] = {
     shouldStop: false,
     platform: "tiktok",
@@ -10537,217 +10726,57 @@ async function tiktokScrollBot(page, accountId, options = {}) {
   // ============================================
   async function checkIfLoggedIn() {
     try {
+      console.log("🔍 Checking login status...");
       const currentUrl = page.url();
       console.log("📍 Current URL:", currentUrl);
 
-      // Check if we're on login page
+      // Check if on login page
       if (currentUrl.includes("/login")) {
+        console.log("❌ On login page - not logged in");
         return false;
       }
 
-      // Check for login button (indicates not logged in)
+      // Wait a bit for page to load
+      await page.waitForTimeout(3000);
+
+      // Check for "Log in" button in header (indicates not logged in)
       const loginButton = await page
-        .locator('button:has-text("Log in")')
-        .first()
-        .isVisible({ timeout: 2000 })
-        .catch(() => false);
-      if (loginButton) {
-        return false;
-      }
-
-      // Check for user profile icon (indicates logged in)
-      const profileIcon = await page
-        .locator('[data-e2e="nav-profile"]')
-        .first()
-        .isVisible({ timeout: 2000 })
-        .catch(() => false);
-      if (profileIcon) {
-        console.log("✅ Already logged in (profile icon found)");
-        return true;
-      }
-
-      // Check for upload button (only visible when logged in)
-      const uploadButton = await page
-        .locator('[data-e2e="nav-upload"]')
-        .first()
-        .isVisible({ timeout: 2000 })
-        .catch(() => false);
-      if (uploadButton) {
-        console.log("✅ Already logged in (upload button found)");
-        return true;
-      }
-
-      // Additional check: Look for avatar or user menu
-      const avatar = await page
-        .locator('div[data-e2e="nav-avatar"]')
-        .first()
-        .isVisible({ timeout: 2000 })
-        .catch(() => false);
-      if (avatar) {
-        console.log("✅ Already logged in (avatar found)");
-        return true;
-      }
-
-      return false;
-    } catch (e) {
-      console.log("⚠️ Could not determine login status:", e.message);
-      return false;
-    }
-  }
-
-  // ============================================
-  // HELPER: Perform login
-  // ============================================
-  async function performLogin() {
-    try {
-      console.log("🔐 Attempting to log in to TikTok...");
-
-      if (!email || !password) {
-        throw new Error("Email and password are required for login");
-      }
-
-      // Navigate to login page
-      console.log("🌐 Navigating to TikTok login page...");
-      await page.goto("https://www.tiktok.com/login/phone-or-email/email", {
-        waitUntil: "domcontentloaded",
-        timeout: 30000,
-      });
-
-      await page.waitForTimeout(4000);
-
-      // Enter Email
-      console.log("📧 Entering email...");
-      const emailSelectors = [
-        'input[type="text"]',
-        'input[name="email"]',
-        'input[placeholder*="email" i]',
-        'input[placeholder*="Email" i]',
-      ];
-      let emailEntered = false;
-
-      for (const selector of emailSelectors) {
-        try {
-          const input = await page.waitForSelector(selector, {
-            timeout: 5000,
-            state: "visible",
-          });
-          if (input) {
-            await input.click();
-            await page.waitForTimeout(500);
-            await input.fill(email);
-            console.log("✅ Email entered");
-            emailEntered = true;
-            break;
-          }
-        } catch (e) {
-          continue;
-        }
-      }
-
-      if (!emailEntered) {
-        throw new Error("Could not find TikTok email input");
-      }
-
-      // Enter Password
-      console.log("🔑 Entering password...");
-      const passwordSelectors = [
-        'input[type="password"]',
-        'input[name="password"]',
-      ];
-      let passwordEntered = false;
-
-      for (const selector of passwordSelectors) {
-        try {
-          const input = await page.waitForSelector(selector, {
-            timeout: 5000,
-            state: "visible",
-          });
-          if (input) {
-            await input.click();
-            await page.waitForTimeout(500);
-            await input.fill(password);
-            console.log("✅ Password entered");
-            passwordEntered = true;
-            break;
-          }
-        } catch (e) {
-          continue;
-        }
-      }
-
-      if (!passwordEntered) {
-        throw new Error("Could not find TikTok password input");
-      }
-
-      // Click Login Button
-      console.log("👆 Clicking login button...");
-      await page.waitForTimeout(1000);
-      const loginSelectors = [
-        'button[type="submit"]',
-        'button:has-text("Log in")',
-        'button[data-e2e="login-button"]',
-      ];
-      let loginClicked = false;
-
-      for (const selector of loginSelectors) {
-        try {
-          const btn = page.locator(selector).first();
-          if (await btn.isVisible({ timeout: 3000 })) {
-            await btn.click();
-            console.log("✅ Login button clicked");
-            loginClicked = true;
-            break;
-          }
-        } catch (e) {
-          continue;
-        }
-      }
-
-      if (!loginClicked) {
-        await page.keyboard.press("Enter");
-        console.log("✅ Pressed Enter to login");
-      }
-
-      await page.waitForTimeout(8000);
-
-      // Check for CAPTCHA
-      const captchaVisible = await page
-        .locator('div:has-text("Verify"), div:has-text("verification")')
+        .locator('button:has-text("Log in"), a:has-text("Log in")')
         .first()
         .isVisible({ timeout: 3000 })
         .catch(() => false);
-      if (captchaVisible) {
-        console.log(
-          "⚠️ CAPTCHA detected - waiting 60 seconds for manual solve..."
-        );
-        console.log("🖐️ Please solve the CAPTCHA manually in the browser");
-        await page.waitForTimeout(60000);
+      
+      if (loginButton) {
+        console.log("❌ Found 'Log in' button - not logged in");
+        return false;
       }
 
-      // Wait for successful redirect
-      console.log("⏳ Waiting for login to complete...");
-      try {
-        await page.waitForURL("**/foryou**", { timeout: 15000 });
-        console.log("✅ Successfully redirected to TikTok home");
-      } catch (e) {
-        const currentUrl = page.url();
-        console.log("⚠️ Current URL:", currentUrl);
+      // Check for profile/avatar (indicates logged in)
+      const profileSelectors = [
+        '[data-e2e="nav-profile"]',
+        '[data-e2e="nav-upload"]',
+        'div[data-e2e="nav-avatar"]',
+        'a[href*="/profile"]',
+      ];
 
-        if (currentUrl.includes("/login")) {
-          throw new Error("Login failed - still on login page");
+      for (const selector of profileSelectors) {
+        const element = await page
+          .locator(selector)
+          .first()
+          .isVisible({ timeout: 2000 })
+          .catch(() => false);
+        
+        if (element) {
+          console.log(`✅ Logged in (found: ${selector})`);
+          return true;
         }
-
-        console.log("✅ Login appears successful (not on login page)");
       }
 
-      // Extra wait for cookies to settle
-      await page.waitForTimeout(5000);
-
-      console.log("✅ TikTok login completed successfully!");
-      return true;
-    } catch (error) {
-      console.error("❌ TikTok login failed:", error.message);
-      throw error;
+      console.log("⚠️ Could not confirm login status - assuming not logged in");
+      return false;
+    } catch (e) {
+      console.log("⚠️ Error checking login status:", e.message);
+      return false;
     }
   }
 
@@ -10764,13 +10793,7 @@ async function tiktokScrollBot(page, accountId, options = {}) {
 
         if (!likeButton) return false;
 
-        // Check for active/liked class
-        const isActive =
-          likeButton.classList.contains("active") ||
-          likeButton.classList.contains("liked");
-        if (isActive) return true;
-
-        // Check SVG fill color
+        // Check for active/liked state
         const svg = likeButton.querySelector("svg");
         if (svg) {
           const path = svg.querySelector("path");
@@ -10779,6 +10802,7 @@ async function tiktokScrollBot(page, accountId, options = {}) {
             const style = window.getComputedStyle(path);
             const color = style.fill || style.color || fill;
 
+            // TikTok red color when liked
             if (
               color &&
               (color.includes("rgb(254, 44, 85)") ||
@@ -10791,7 +10815,7 @@ async function tiktokScrollBot(page, accountId, options = {}) {
           }
         }
 
-        // Check aria-label for "unlike"
+        // Check aria-label
         const ariaLabel = likeButton.getAttribute("aria-label");
         if (ariaLabel && ariaLabel.toLowerCase().includes("unlike")) {
           return true;
@@ -10810,7 +10834,7 @@ async function tiktokScrollBot(page, accountId, options = {}) {
   async function performLike(videoContainer) {
     try {
       const strategies = [
-        { name: "data-e2e", selector: '[data-e2e="like-icon"]' },
+        { name: "like-icon", selector: '[data-e2e="like-icon"]' },
         { name: "browse-like", selector: '[data-e2e="browse-like-icon"]' },
         { name: "aria-label", selector: 'button[aria-label*="like"]' },
       ];
@@ -10819,16 +10843,14 @@ async function tiktokScrollBot(page, accountId, options = {}) {
         try {
           const likeButton = videoContainer.locator(strategy.selector).first();
 
-          if (
-            await likeButton.isVisible({ timeout: 2000 }).catch(() => false)
-          ) {
+          if (await likeButton.isVisible({ timeout: 2000 }).catch(() => false)) {
             await likeButton.scrollIntoViewIfNeeded({ timeout: 1000 });
             await page.waitForTimeout(300 + Math.floor(Math.random() * 200));
             await likeButton.click({ timeout: 2000 });
 
             activeScrollBots[accountId].stats.likes++;
             console.log(
-              `❤️ Liked via ${strategy.name}! (Total: ${activeScrollBots[accountId].stats.likes})`
+              `❤️ Liked! (Total: ${activeScrollBots[accountId].stats.likes})`
             );
             await page.waitForTimeout(1000 + Math.floor(Math.random() * 1500));
             return true;
@@ -10847,39 +10869,54 @@ async function tiktokScrollBot(page, accountId, options = {}) {
   }
 
   // ============================================
-  // HELPER: Perform comment (FIXED)
+  // HELPER: Perform comment
   // ============================================
   async function performComment(videoContainer) {
     try {
-      console.log("\n💬 Starting comment process...");
+      console.log("💬 Starting comment process...");
 
       // STEP 1: Click comment button
       console.log("🔍 Looking for comment button...");
-      const commentButton = videoContainer
-        .locator('[data-e2e="comment-icon"], [data-e2e="browse-comment"]')
-        .first();
+      const commentButtonSelectors = [
+        '[data-e2e="comment-icon"]',
+        '[data-e2e="browse-comment"]',
+        'button[aria-label*="comment"]',
+      ];
 
-      if (!(await commentButton.isVisible({ timeout: 2000 }).catch(() => false))) {
-        console.log("⚠️ Comment button not visible");
+      let commentButton = null;
+
+      for (const selector of commentButtonSelectors) {
+        try {
+          const btn = videoContainer.locator(selector).first();
+          if (await btn.isVisible({ timeout: 2000 }).catch(() => false)) {
+            commentButton = btn;
+            console.log(`✅ Found comment button: ${selector}`);
+            break;
+          }
+        } catch (e) {
+          continue;
+        }
+      }
+
+      if (!commentButton) {
+        console.log("❌ Comment button not found");
         return false;
       }
 
-      console.log("✅ Comment button found, clicking...");
       await commentButton.scrollIntoViewIfNeeded({ timeout: 1000 });
-      await page.waitForTimeout(300);
+      await page.waitForTimeout(500);
       await commentButton.click({ timeout: 2000 });
       console.log("✅ Comment button clicked");
 
-      // Wait for comment section to load
+      // Wait for comment section
       await page.waitForTimeout(3000);
 
-      // STEP 2: Find comment input box
-      console.log("🔍 Looking for comment input box...");
+      // STEP 2: Find comment input
+      console.log("🔍 Looking for comment input...");
       const commentBoxSelectors = [
         '[data-e2e="comment-input"]',
         'div[contenteditable="true"]',
         'div[data-e2e="comment-input-container"] div[contenteditable="true"]',
-        'textarea[placeholder*="comment" i]',
       ];
 
       let commentBox = null;
@@ -10888,8 +10925,8 @@ async function tiktokScrollBot(page, accountId, options = {}) {
         try {
           const box = page.locator(selector).first();
           if (await box.isVisible({ timeout: 2000 }).catch(() => false)) {
-            console.log(`✅ Found comment box: ${selector}`);
             commentBox = box;
+            console.log(`✅ Found comment input: ${selector}`);
             break;
           }
         } catch (e) {
@@ -10898,27 +10935,23 @@ async function tiktokScrollBot(page, accountId, options = {}) {
       }
 
       if (!commentBox) {
-        console.log("❌ Comment input box not found");
-        try {
-          await page.keyboard.press("Escape");
-        } catch {}
+        console.log("❌ Comment input not found");
+        await page.keyboard.press("Escape");
         return false;
       }
 
       // STEP 3: Type comment
       const comment = comments[Math.floor(Math.random() * comments.length)];
-      console.log(`⌨️ Typing comment: "${comment}"`);
+      console.log(`⌨️ Typing: "${comment}"`);
 
       await commentBox.click({ timeout: 2000 });
       await page.waitForTimeout(500);
-
-      // Use pressSequentially for better typing simulation
       await commentBox.pressSequentially(comment, { delay: 80 });
       console.log("✅ Comment typed");
 
       await page.waitForTimeout(1500);
 
-      // STEP 4: Click post button
+      // STEP 4: Post comment
       console.log("🔍 Looking for post button...");
       const postButtonSelectors = [
         '[data-e2e="comment-post"]',
@@ -10932,9 +10965,8 @@ async function tiktokScrollBot(page, accountId, options = {}) {
         try {
           const postButton = page.locator(selector).first();
           if (await postButton.isVisible({ timeout: 2000 }).catch(() => false)) {
-            console.log(`✅ Found post button: ${selector}`);
             await postButton.click({ timeout: 2000 });
-            console.log("✅ Post button clicked");
+            console.log("✅ Comment posted");
             posted = true;
             break;
           }
@@ -10944,21 +10976,15 @@ async function tiktokScrollBot(page, accountId, options = {}) {
       }
 
       if (!posted) {
-        console.log("⚠️ Post button not found or not clickable");
-        try {
-          await page.keyboard.press("Escape");
-        } catch {}
+        console.log("❌ Post button not found");
+        await page.keyboard.press("Escape");
         return false;
       }
 
       activeScrollBots[accountId].stats.comments++;
-      console.log(
-        `✅ Comment posted: "${comment}" (Total: ${activeScrollBots[accountId].stats.comments})`
-      );
+      console.log(`✅ Comment success! (Total: ${activeScrollBots[accountId].stats.comments})`);
 
-      await page.waitForTimeout(2000 + Math.floor(Math.random() * 2000));
-
-      // Close comment section
+      await page.waitForTimeout(2000);
       await page.keyboard.press("Escape");
       await page.waitForTimeout(500);
 
@@ -10967,7 +10993,6 @@ async function tiktokScrollBot(page, accountId, options = {}) {
       console.log("❌ Comment failed:", e.message);
       try {
         await page.keyboard.press("Escape");
-        await page.waitForTimeout(500);
       } catch {}
       return false;
     }
@@ -10992,13 +11017,12 @@ async function tiktokScrollBot(page, accountId, options = {}) {
       await shareButton.click({ timeout: 2000 });
 
       activeScrollBots[accountId].stats.shares++;
-      console.log(
-        `🔗 Shared! (Total: ${activeScrollBots[accountId].stats.shares})`
-      );
-      await page.waitForTimeout(1000 + Math.floor(Math.random() * 1500));
-
+      console.log(`🔗 Shared! (Total: ${activeScrollBots[accountId].stats.shares})`);
+      
+      await page.waitForTimeout(1000);
       await page.keyboard.press("Escape");
       await page.waitForTimeout(500);
+      
       return true;
     } catch (e) {
       console.log("⚠️ Share failed:", e.message);
@@ -11013,39 +11037,46 @@ async function tiktokScrollBot(page, accountId, options = {}) {
   // MAIN EXECUTION
   // ============================================
   try {
-    // STEP 1: Check login status
-    console.log("🔍 Checking login status...");
+    console.log("🏠 Starting TikTok bot...");
 
-    await page.goto("https://www.tiktok.com/foryou", {
-      waitUntil: "domcontentloaded",
-      timeout: 30000,
-    });
-    await page.waitForTimeout(4000);
+    // Check current URL - if already on TikTok, don't navigate
+    const currentUrl = page.url();
+    console.log("📍 Current URL:", currentUrl);
 
-    const isLoggedIn = await checkIfLoggedIn();
-
-    if (!isLoggedIn) {
-      console.log("🔐 Not logged in - attempting to log in...");
-      await performLogin();
-      
-      // Navigate back to For You page after login
-      console.log("🏠 Navigating to For You page...");
+    // Only navigate if not already on TikTok
+    if (!currentUrl.includes("tiktok.com")) {
+      console.log("🌐 Navigating to TikTok...");
       await page.goto("https://www.tiktok.com/foryou", {
         waitUntil: "domcontentloaded",
         timeout: 30000,
       });
-      await page.waitForTimeout(5000);
+      await page.waitForTimeout(4000);
     } else {
-      console.log("✅ Already logged in - proceeding to scroll");
+      console.log("✅ Already on TikTok - reusing session");
+      await page.waitForTimeout(2000);
     }
 
-    console.log("✅ Ready to start scrolling!");
+    // Check if logged in
+    const isLoggedIn = await checkIfLoggedIn();
+
+    if (!isLoggedIn) {
+      console.log("❌ Not logged in!");
+      console.log("⚠️ Please log in manually in the browser, then start the bot again.");
+      
+      delete activeScrollBots[accountId];
+      return {
+        success: false,
+        message: "Not logged in. Please log in to TikTok first.",
+      };
+    }
+
+    console.log("✅ Logged in - Starting scroll bot!");
 
     let scrollIteration = 0;
     let consecutiveErrors = 0;
     const MAX_CONSECUTIVE_ERRORS = 10;
 
-    // STEP 2: Start infinite scroll loop
+    // INFINITE SCROLL LOOP
     while (!activeScrollBots[accountId]?.shouldStop) {
       scrollIteration++;
       console.log(`\n${"=".repeat(50)}`);
@@ -11072,17 +11103,11 @@ async function tiktokScrollBot(page, accountId, options = {}) {
       }
 
       if (videoContainers.length === 0) {
-        videoContainers = await page
-          .locator('div[class*="DivItemContainer"]')
-          .all();
-      }
-
-      if (videoContainers.length === 0) {
-        console.log("⚠️ No videos found, continuing...");
+        console.log("⚠️ No videos found");
         consecutiveErrors++;
 
         if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
-          console.log("❌ Too many consecutive errors, stopping");
+          console.log("❌ Too many errors, stopping");
           break;
         }
         continue;
@@ -11105,7 +11130,7 @@ async function tiktokScrollBot(page, accountId, options = {}) {
         // ❤️ LIKE
         if (Math.random() * 100 < likeChance) {
           if (alreadyLiked) {
-            console.log("❤️ Already liked, skipping...");
+            console.log("❤️ Already liked, skipping");
           } else {
             await performLike(videoContainer);
           }
@@ -11122,43 +11147,31 @@ async function tiktokScrollBot(page, accountId, options = {}) {
 
         if (activeScrollBots[accountId]?.shouldStop) break;
 
-        // 💬 COMMENT (FIXED)
+        // 💬 COMMENT
         if (Math.random() * 100 < commentChance) {
           activeScrollBots[accountId].stats.commentAttempts++;
-          console.log(
-            `💬 Comment attempt ${activeScrollBots[accountId].stats.commentAttempts}...`
-          );
+          console.log(`💬 Comment attempt ${activeScrollBots[accountId].stats.commentAttempts}`);
 
           const commentSuccess = await performComment(videoContainer);
 
           if (!commentSuccess) {
             activeScrollBots[accountId].stats.commentsFailed++;
-            console.log(
-              `❌ Comment failed (Total failed: ${activeScrollBots[accountId].stats.commentsFailed})`
-            );
+            console.log(`❌ Failed (Total: ${activeScrollBots[accountId].stats.commentsFailed})`);
           }
 
-          // Extra wait after comment attempt
           await page.waitForTimeout(2000 + Math.floor(Math.random() * 2000));
         }
       } catch (err) {
-        console.log("⚠️ Interaction error:", err.message);
+        console.log("⚠️ Error:", err.message);
         activeScrollBots[accountId].stats.errors.push(err.message);
         consecutiveErrors++;
-
-        if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
-          console.log("❌ Too many consecutive errors, stopping");
-          break;
-        }
       }
 
-      // Random pause every 5-8 scrolls
+      // Random pause
       if (scrollIteration % (5 + Math.floor(Math.random() * 4)) === 0) {
-        const pauseDuration = 5000 + Math.floor(Math.random() * 5000);
-        console.log(
-          `⏸️ Taking a ${Math.floor(pauseDuration / 1000)}s break...`
-        );
-        await page.waitForTimeout(pauseDuration);
+        const pause = 5000 + Math.floor(Math.random() * 5000);
+        console.log(`⏸️ Break: ${Math.floor(pause / 1000)}s`);
+        await page.waitForTimeout(pause);
       }
 
       if (activeScrollBots[accountId]?.shouldStop) {
@@ -11167,29 +11180,27 @@ async function tiktokScrollBot(page, accountId, options = {}) {
       }
     }
 
-    // ============================================
     // FINAL STATS
-    // ============================================
     const finalStats = activeScrollBots[accountId].stats;
     const duration = Math.floor((Date.now() - finalStats.startTime) / 1000);
-    const commentSuccessRate =
+    const successRate =
       finalStats.commentAttempts > 0
         ? Math.round((finalStats.comments / finalStats.commentAttempts) * 100)
         : 0;
 
     console.log("\n" + "=".repeat(60));
-    console.log("✅ TikTok scroll bot STOPPED");
+    console.log("✅ TikTok bot STOPPED");
     console.log("=".repeat(60));
-    console.log(`📊 Final Statistics:`);
+    console.log(`📊 Statistics:`);
     console.log(`   🔄 Scrolls: ${finalStats.scrolls}`);
     console.log(`   ❤️  Likes: ${finalStats.likes}`);
     console.log(`   💬 Comments: ${finalStats.comments}`);
-    console.log(`   📝 Comment Attempts: ${finalStats.commentAttempts}`);
-    console.log(`   ❌ Comments Failed: ${finalStats.commentsFailed}`);
-    console.log(`   ✅ Comment Success Rate: ${commentSuccessRate}%`);
+    console.log(`   📝 Attempts: ${finalStats.commentAttempts}`);
+    console.log(`   ❌ Failed: ${finalStats.commentsFailed}`);
+    console.log(`   ✅ Success Rate: ${successRate}%`);
     console.log(`   🔗 Shares: ${finalStats.shares}`);
-    console.log(`   ⏱️  Duration: ${duration}s (${Math.floor(duration / 60)}m)`);
-    console.log(`   ⚠️  Total Errors: ${finalStats.errors.length}`);
+    console.log(`   ⏱️  Duration: ${duration}s`);
+    console.log(`   ⚠️  Errors: ${finalStats.errors.length}`);
     console.log("=".repeat(60));
 
     delete activeScrollBots[accountId];
@@ -11200,11 +11211,11 @@ async function tiktokScrollBot(page, accountId, options = {}) {
       stats: {
         ...finalStats,
         duration: `${duration}s`,
-        commentSuccessRate: `${commentSuccessRate}%`,
+        successRate: `${successRate}%`,
       },
     };
   } catch (error) {
-    console.error("❌ TikTok bot fatal error:", error.message);
+    console.error("❌ Fatal error:", error.message);
 
     if (activeScrollBots[accountId]) {
       activeScrollBots[accountId].stats.errors.push(error.message);
@@ -11215,7 +11226,6 @@ async function tiktokScrollBot(page, accountId, options = {}) {
     return {
       success: false,
       message: error.message,
-      error: error.stack,
     };
   }
 }
