@@ -51,26 +51,41 @@ async function solveCaptcha(siteURL, siteKey) {
 const LOGIN_URL = {
   instagram: "https://www.instagram.com/accounts/login/",
   facebook: "https://www.facebook.com/login/",
-  youtube:
-    "https://accounts.google.com/v3/signin/identifier?continue=https%3A%2F%2Fwww.youtube.com%2Fsignin%3Faction_handle_signin%3Dtrue%26app%3Ddesktop%26hl%3Den%26next%3Dhttps%253A%252F%252Fwww.youtube.com%252F&dsh=S1359224021%3A1766843685369378&ec=65620&hl=en&ifkv=Ac2yZaUMabvbQcslE6h1iTgIEGmRjXVU4CAOAA3pbO8EMLrrsucsaRPXf8CT6G_l1hpDocOn9-GI2A&passive=true&service=youtube&uilel=3&flowName=GlifWebSignIn&flowEntry=ServiceLogin",
+  youtube: "https://accounts.google.com",
   tiktok: "https://www.tiktok.com/login/phone-or-email/email",
   twitter: "https://twitter.com/login",
   linkedin: "https://www.linkedin.com/login",
-  google_business:
-    "https://accounts.google.com/ServiceLogin?service=lbc&passive=true&continue=https://business.google.com/&hl=en", // Add this
+  google_business: "https://accounts.google.com/ServiceLogin?service=lbc&passive=true&continue=https://business.google.com/&hl=en",
   trustpilot: "https://www.trustpilot.com/users/connect",
 };
-let activeBrowsers = {}; // store browsers and pages
+
+let activeBrowsers = {};
 let activeContexts = {};
 const activeScrollBots = {};
+
 app.post("/login-social", async (req, res) => {
-  const { username, password, platform, account_id } = req.body;
+  const {
+    username,
+    password,
+    platform,
+    account_id,
+    proxy_host,
+    proxy_port,
+    proxy_username,
+    proxy_password,
+    headless = false,
+    email,
+    twitter_username,
+  } = req.body;
 
   if (!LOGIN_URL[platform]) {
     return res.json({ success: false, message: "Platform not supported" });
   }
 
   console.log(`🌐 Login attempt → ${platform} | Account ID: ${account_id}`);
+  console.log(`📺 Headless mode: ${headless}`);
+
+  let browser; // Declare browser variable at the top
 
   try {
     // Reuse session if browser is already running
@@ -87,45 +102,123 @@ app.post("/login-social", async (req, res) => {
       });
     }
 
-    // Launch new browser
-    const browser = await chromium.launch({
-      headless: false,
+    // Build browser launch options
+    const launchOptions = {
+      headless: headless,
       args: [
-        "--no-sandbox",
-        "--disable-setuid-sandbox",
-        "--disable-dev-shm-usage",
-        "--disable-blink-features=AutomationControlled",
-      ],
-    });
+        '--disable-blink-features=AutomationControlled',
+        '--disable-dev-shm-usage',
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+      ]
+    };
 
-    const context = await browser.newContext({
-      userAgent:
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36",
+    // Configure proxy if provided
+    if (proxy_host && proxy_port) {
+      launchOptions.proxy = {
+        server: `http://${proxy_host}:${proxy_port}`,
+      };
+      
+      if (proxy_username && proxy_password) {
+        launchOptions.proxy.username = proxy_username;
+        launchOptions.proxy.password = proxy_password;
+      }
+      
+      console.log(`🔐 Using proxy: ${proxy_host}:${proxy_port}`);
+    }
+
+    console.log('🚀 Launching browser...');
+    
+    // Log proxy configuration
+    if (proxy_host && proxy_port) {
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log('🔐 PROXY CONFIGURATION:');
+      console.log(`   Host: ${proxy_host}`);
+      console.log(`   Port: ${proxy_port}`);
+      console.log(`   Username: ${proxy_username ? '✓ Set' : '✗ Not set'}`);
+      console.log(`   Password: ${proxy_password ? '✓ Set' : '✗ Not set'}`);
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    } else {
+      console.log('⚠️  No proxy configured - using direct connection');
+    }
+    
+    browser = await chromium.launch(launchOptions);
+
+    const contextOptions = {
+      userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36",
       locale: "en-US",
       timezoneId: "America/New_York",
       permissions: ["geolocation", "notifications"],
-      viewport: { width: 1280, height: 720 },
-    });
+      viewport: { width: 1920, height: 1080 },
+      ignoreHTTPSErrors: true,
+    };
+
+    const context = await browser.newContext(contextOptions);
 
     activeBrowsers[account_id] = browser;
     activeContexts[account_id] = context;
 
     const page = await context.newPage();
 
-    console.log("⏳ Loading login page...");
+    // Check proxy connection if proxy is configured
+    if (proxy_host && proxy_port) {
+      console.log('\n🔍 CHECKING PROXY CONNECTION...');
+      try {
+        await page.goto('https://api.ipify.org?format=json', { timeout: 15000 });
+        const ipResponse = await page.evaluate(() => document.body.innerText);
+        const ipData = JSON.parse(ipResponse);
+        console.log('✅ PROXY IS WORKING!');
+        console.log(`   Your IP through proxy: ${ipData.ip}`);
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+      } catch (error) {
+        console.log('⚠️  Could not verify proxy IP (continuing anyway)');
+        console.log(`   Error: ${error.message}\n`);
+      }
+    }
 
-    await page.goto(LOGIN_URL[platform], {
-      waitUntil: "domcontentloaded",
-      timeout: 60000,
-    });
+    console.log(`🌐 Navigating to ${LOGIN_URL[platform]}...`);
+
+    // Navigate with retry logic
+    let navigationSuccess = false;
+    let lastError = null;
+    
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        await page.goto(LOGIN_URL[platform], {
+          waitUntil: "domcontentloaded",
+          timeout: 60000,
+        });
+        navigationSuccess = true;
+        console.log(`✅ Navigation successful on attempt ${attempt}`);
+        break;
+      } catch (error) {
+        lastError = error;
+        console.log(`❌ Navigation attempt ${attempt} failed: ${error.message}`);
+        if (attempt < 3) {
+          await page.waitForTimeout(2000);
+        }
+      }
+    }
+
+    if (!navigationSuccess) {
+      await browser.close();
+      delete activeBrowsers[account_id];
+      delete activeContexts[account_id];
+      
+      return res.json({
+        success: false,
+        message: "Failed to navigate to login page",
+        error: lastError?.message || "Navigation failed after 3 attempts"
+      });
+    }
 
     await page.waitForTimeout(2500);
 
+    console.log(`🔑 Attempting login for platform: ${platform}`);
+
     switch (platform) {
       case "instagram": {
-        await page.waitForSelector('input[name="username"]', {
-          timeout: 30000,
-        });
+        await page.waitForSelector('input[name="username"]', { timeout: 30000 });
         await page.fill('input[name="username"]', username);
         await page.fill('input[name="password"]', password);
         await page.click('button[type="submit"]');
@@ -146,7 +239,6 @@ app.post("/login-social", async (req, res) => {
 
       case "google_business": {
         console.log("🏢 Starting Google Business login flow...");
-
         await page.waitForSelector('input[type="email"]', { timeout: 20000 });
         await page.fill('input[type="email"]', username);
         console.log("✅ Email entered");
@@ -154,9 +246,7 @@ app.post("/login-social", async (req, res) => {
         await page.keyboard.press("Enter");
         await page.waitForTimeout(3000);
 
-        await page.waitForSelector('input[type="password"]', {
-          timeout: 20000,
-        });
+        await page.waitForSelector('input[type="password"]', { timeout: 20000 });
         await page.fill('input[type="password"]', password);
         console.log("✅ Password entered");
 
@@ -177,9 +267,7 @@ app.post("/login-social", async (req, res) => {
         }
 
         try {
-          await page.waitForURL("**/business.google.com/**", {
-            timeout: 15000,
-          });
+          await page.waitForURL("**/business.google.com/**", { timeout: 15000 });
           console.log("✅ Successfully redirected to Google Business");
         } catch (e) {
           const currentUrl = page.url();
@@ -196,8 +284,8 @@ app.post("/login-social", async (req, res) => {
 
       case "twitter": {
         console.log("🐦 Starting Twitter login flow...");
-        const twitterEmail = req.body.email || username;
-        const twitterUsername = req.body.twitter_username || username;
+        const twitterEmail = email || username;
+        const twitterUser = twitter_username || username;
 
         await page.waitForTimeout(3000);
 
@@ -234,7 +322,7 @@ app.post("/login-social", async (req, res) => {
             { timeout: 5000 }
           );
           if (usernameInput) {
-            await usernameInput.fill(twitterUsername.replace("@", ""));
+            await usernameInput.fill(twitterUser.replace("@", ""));
             await page.keyboard.press("Enter");
             await page.waitForTimeout(4000);
           }
@@ -253,7 +341,7 @@ app.post("/login-social", async (req, res) => {
 
       case "tiktok": {
         console.log("🎵 Starting TikTok login flow...");
-        const tiktokEmail = req.body.email || username;
+        const tiktokEmail = email || username;
         console.log("📧 Using email:", tiktokEmail);
 
         await page.waitForTimeout(4000);
@@ -280,8 +368,7 @@ app.post("/login-social", async (req, res) => {
           }
         }
 
-        if (!tiktokEmailEntered)
-          throw new Error("Could not find TikTok email input");
+        if (!tiktokEmailEntered) throw new Error("Could not find TikTok email input");
 
         const tiktokPasswordSelectors = [
           'input[type="password"]',
@@ -305,8 +392,7 @@ app.post("/login-social", async (req, res) => {
           }
         }
 
-        if (!tiktokPasswordEntered)
-          throw new Error("Could not find TikTok password input");
+        if (!tiktokPasswordEntered) throw new Error("Could not find TikTok password input");
 
         await page.waitForTimeout(1000);
         const tiktokLoginSelectors = [
@@ -365,42 +451,32 @@ app.post("/login-social", async (req, res) => {
         await page.waitForTimeout(5000);
         break;
       }
-case "trustpilot": {
-  console.log("⭐ Trustpilot → Continue with Google");
 
-  // 1️⃣ Open Trustpilot login
-  await page.goto("https://www.trustpilot.com/users/connect", {
-    waitUntil: "networkidle", // wait for all requests
-  });
+      case "trustpilot": {
+        console.log("⭐ Trustpilot → Continue with Google");
+        await page.goto("https://www.trustpilot.com/users/connect", {
+          waitUntil: "networkidle",
+        });
 
-  // 2️⃣ Wait for the login box to appear
-  const loginContainer = page.locator('text=Log in or sign up below');
-  await loginContainer.waitFor({ state: "visible", timeout: 10000 });
+        const loginContainer = page.locator('text=Log in or sign up below');
+        await loginContainer.waitFor({ state: "visible", timeout: 10000 });
 
-  // 3️⃣ Wait for "Continue with Google" button
-  const googleBtn = page.locator('button:has-text("Continue with Google")').first();
+        const googleBtn = page.locator('button:has-text("Continue with Google")').first();
 
-  try {
-    await googleBtn.waitFor({ state: "visible", timeout: 10000 });
-    await googleBtn.scrollIntoViewIfNeeded();
-    await googleBtn.click();
-    console.log("✅ Clicked Continue with Google");
-  } catch (e) {
-    await page.screenshot({ path: "trustpilot-google-not-found.png" });
-    throw new Error("❌ Continue with Google button not found");
-  }
+        try {
+          await googleBtn.waitFor({ state: "visible", timeout: 10000 });
+          await googleBtn.scrollIntoViewIfNeeded();
+          await googleBtn.click();
+          console.log("✅ Clicked Continue with Google");
+        } catch (e) {
+          await page.screenshot({ path: "trustpilot-google-not-found.png" });
+          throw new Error("❌ Continue with Google button not found");
+        }
 
-  // 4️⃣ Wait for Google login page
-  await page.waitForURL(/accounts\.google\.com/, {
-    timeout: 20000,
-  });
-
-  console.log("✅ Redirected to Google login");
-
-  break;
-}
-
-
+        await page.waitForURL(/accounts\.google\.com/, { timeout: 20000 });
+        console.log("✅ Redirected to Google login");
+        break;
+      }
 
       case "youtube": {
         await page.waitForSelector('input[type="email"]', { timeout: 20000 });
@@ -425,33 +501,19 @@ case "trustpilot": {
     console.log("  - Cookies count:", storageState.cookies?.length || 0);
     console.log("  - Origins count:", storageState.origins?.length || 0);
 
-    // Show cookie names for debugging
     if (storageState.cookies && storageState.cookies.length > 0) {
       const cookieNames = storageState.cookies.map((c) => c.name).join(", ");
       console.log("  - Cookie names:", cookieNames);
     }
 
-    // Extract auth token
     const authToken = extractAuthToken(storageState.cookies, platform);
-
-    // Convert to JSON string
     const sessionDataString = JSON.stringify(storageState);
 
     console.log("📏 Data Sizes:");
-    console.log(
-      "  - Session Data:",
-      sessionDataString.length,
-      "bytes",
-      "(" + (sessionDataString.length / 1024).toFixed(2) + " KB)"
-    );
-    console.log(
-      "  - Cookies:",
-      JSON.stringify(storageState.cookies).length,
-      "bytes"
-    );
+    console.log("  - Session Data:", sessionDataString.length, "bytes", "(" + (sessionDataString.length / 1024).toFixed(2) + " KB)");
+    console.log("  - Cookies:", JSON.stringify(storageState.cookies).length, "bytes");
     console.log("  - Auth Token:", authToken ? "Found" : "Not found");
 
-    // Log first 500 chars of session data for debugging
     console.log("📝 Session Data Preview (first 500 chars):");
     console.log(sessionDataString.substring(0, 500));
 
@@ -464,14 +526,21 @@ case "trustpilot": {
     };
 
     console.log(`✅ Login successful → ${account_id}`);
-    console.log(
-      `📊 Response prepared with ${Object.keys(response).length} fields`
-    );
-
     return res.json(response);
+
   } catch (error) {
-    console.error("❌ Login failed:", error.message);
-    console.error("Stack trace:", error.stack);
+    console.error(`❌ Login error: ${error.message}`);
+    
+    if (browser) {
+      try {
+        await browser.close();
+      } catch (e) {}
+    }
+    
+    if (activeBrowsers[account_id]) {
+      delete activeBrowsers[account_id];
+      delete activeContexts[account_id];
+    }
 
     return res.json({
       success: false,
@@ -481,9 +550,17 @@ case "trustpilot": {
   }
 });
 
-// --------------- CHECK LOGIN STATUS -------------------
 app.post("/check-login", async (req, res) => {
-  const { platform, cookies, sessionData } = req.body;
+  const {
+    platform,
+    cookies,
+    sessionData,
+    proxy_host,
+    proxy_port,
+    proxy_username,
+    proxy_password,
+    headless = true,
+  } = req.body;
 
   if (!cookies || !sessionData) {
     return res.json({
@@ -493,15 +570,31 @@ app.post("/check-login", async (req, res) => {
     });
   }
 
+  let browser;
   try {
-    const browser = await chromium.launch({
-      headless: true,
+    const launchOptions = {
+      headless: headless,
+      args: ['--disable-blink-features=AutomationControlled']
+    };
+
+    if (proxy_host && proxy_port) {
+      launchOptions.proxy = {
+        server: `http://${proxy_host}:${proxy_port}`,
+      };
+      
+      if (proxy_username && proxy_password) {
+        launchOptions.proxy.username = proxy_username;
+        launchOptions.proxy.password = proxy_password;
+      }
+    }
+
+    browser = await chromium.launch(launchOptions);
+
+    const context = await browser.newContext({
+      storageState: JSON.parse(sessionData),
+      ignoreHTTPSErrors: true,
     });
 
-    const parsedSessionData = JSON.parse(sessionData);
-    const context = await browser.newContext({
-      storageState: parsedSessionData,
-    });
     const page = await context.newPage();
 
     const homeUrls = {
@@ -512,31 +605,29 @@ app.post("/check-login", async (req, res) => {
       youtube: "https://www.youtube.com/",
       tiktok: "https://www.tiktok.com/foryou",
       google_business: "https://business.google.com/",
+      trustpilot: "https://www.trustpilot.com/",
     };
 
     await page.goto(homeUrls[platform] || LOGIN_URL[platform], {
       timeout: 30000,
     });
-    await page.waitForTimeout(3000);
 
-    const currentUrl = page.url();
     const isLoggedIn =
-      !currentUrl.includes("/login") && !currentUrl.includes("/signin");
+      !page.url().includes("/login") &&
+      !page.url().includes("/signin");
 
     await browser.close();
-
     res.json({ success: true, isLoggedIn });
   } catch (error) {
-    console.log(error);
+    if (browser) {
+      try { await browser.close(); } catch (e) {}
+    }
     res.json({ success: false, isLoggedIn: false, error: error.message });
   }
 });
 
-// --------------- EXECUTE TASK -------------------
-
 app.post("/execute-task", async (req, res) => {
-  const { task, account } = req.body;
-  console.log("📋 Executing Task:", task);
+  const { task, account, headless = false } = req.body;
 
   if (!task || !account) {
     return res.json({
@@ -568,8 +659,8 @@ app.post("/execute-task", async (req, res) => {
         }
       }
 
-      browser = await chromium.launch({
-        headless: false,
+      const launchOptions = {
+        headless: headless,
         slowMo: 100,
         args: [
           "--no-sandbox",
@@ -578,15 +669,29 @@ app.post("/execute-task", async (req, res) => {
           "--disable-blink-features=AutomationControlled",
           "--start-maximized",
         ],
-      });
+      };
+
+      // Add proxy if available in account
+      if (account.proxy_host && account.proxy_port) {
+        launchOptions.proxy = {
+          server: `http://${account.proxy_host}:${account.proxy_port}`,
+        };
+        
+        if (account.proxy_username && account.proxy_password) {
+          launchOptions.proxy.username = account.proxy_username;
+          launchOptions.proxy.password = account.proxy_password;
+        }
+      }
+
+      browser = await chromium.launch(launchOptions);
 
       context = await browser.newContext({
         storageState,
-        userAgent:
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36",
+        userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36",
         locale: "en-US",
         viewport: { width: 1280, height: 720 },
         permissions: ["geolocation", "notifications"],
+        ignoreHTTPSErrors: true,
       });
 
       activeBrowsers[account.id] = browser;
@@ -595,31 +700,13 @@ app.post("/execute-task", async (req, res) => {
       page = await context.newPage();
     }
 
-    // Task execution logic
-    if (taskType === "post") {
-      return res.json(await createPost(page, platform, task));
-    }
+    if (taskType === "post") return res.json(await createPost(page, platform, task));
+    if (taskType === "follow") return res.json(await followUser(page, platform, task.target_url));
+    if (taskType === "unfollow") return res.json(await unfollowUser(page, platform, task.target_url));
+    if (taskType === "like") return res.json(await likePost(page, platform, task.target_url));
+    if (taskType === "comment") return res.json(await commentOnPost(page, platform, task.target_url, task.comment));
 
-    if (taskType === "follow") {
-      return res.json(await followUser(page, platform, task.target_url));
-    }
-
-    if (taskType === "unfollow") {
-      return res.json(await unfollowUser(page, platform, task.target_url));
-    }
-
-    if (taskType === "like") {
-      const result = await likePost(page, platform, task.target_url);
-      return res.json(result);
-    }
-
-    if (taskType === "comment") {
-      return res.json(
-        await commentOnPost(page, platform, task.target_url, task.comment)
-      );
-    }
-
-    // 🔥 UNLIMITED AUTO-SCROLL
+    // Scroll bot logic
     if (taskType === "scroll" || taskType === "share") {
       const options = {
         likeChance: task.likeChance || 30,
@@ -654,6 +741,7 @@ app.post("/execute-task", async (req, res) => {
           info: "Bot will run until you call /stop-scroll",
         });
       }
+
       if (platform === "youtube") {
         const youtubeOptions = {
           likeChance: task.likeChance || 35,
@@ -669,7 +757,6 @@ app.post("/execute-task", async (req, res) => {
         });
       }
 
-      // Add LinkedIn scrolling
       if (platform === "linkedin") {
         const linkedinOptions = {
           likeChance: task.likeChance || 35,
@@ -678,11 +765,6 @@ app.post("/execute-task", async (req, res) => {
             "Great insights! 👍",
             "Thanks for sharing! 🙌",
             "Very informative! 💡",
-            "Interesting perspective! 🤔",
-            "Well said! 💯",
-            "Absolutely agree! ✨",
-            "This is valuable! 🎯",
-            "Amazing post! 🔥",
           ],
         };
 
@@ -695,7 +777,6 @@ app.post("/execute-task", async (req, res) => {
       }
 
       if (platform === "tiktok") {
-        // ⭐ Pass email and password for TikTok auto-login
         const tiktokOptions = {
           ...options,
           email: account.account_email || account.account_username,
@@ -706,7 +787,7 @@ app.post("/execute-task", async (req, res) => {
         return res.json({
           success: true,
           message: "TikTok unlimited scrolling started (with auto-login)",
-          info: "Bot will automatically log in if needed, then start scrolling. Call /stop-scroll to stop.",
+          info: "Bot will automatically log in if needed. Call /stop-scroll to stop.",
         });
       }
 
@@ -716,20 +797,12 @@ app.post("/execute-task", async (req, res) => {
       });
     }
 
-    return res.json({
-      success: false,
-      message: `Task type ${taskType} not supported`,
-    });
+    res.json({ success: false, message: "Task not supported" });
   } catch (error) {
-    console.error("❌ Task execution failed:", error.message);
-    return res.json({
-      success: false,
-      message: error.message,
-    });
+    res.json({ success: false, message: error.message });
   }
 });
 
-// Add endpoint to close browser for an account
 app.post("/close-browser", async (req, res) => {
   const { account_id } = req.body;
 
@@ -738,16 +811,26 @@ app.post("/close-browser", async (req, res) => {
       await activeBrowsers[account_id].close();
       delete activeBrowsers[account_id];
       delete activeContexts[account_id];
-      console.log(`🔒 Browser closed for account ${account_id}`);
-      return res.json({ success: true, message: "Browser closed" });
+      
+      return res.json({
+        success: true,
+        message: "Browser closed successfully"
+      });
+    } else {
+      return res.json({
+        success: false,
+        message: "No active browser found for this account"
+      });
     }
-
-    return res.json({ success: true, message: "No active browser found" });
   } catch (error) {
-    console.error("❌ Failed to close browser:", error.message);
-    return res.json({ success: false, message: error.message });
+    return res.json({
+      success: false,
+      message: error.message
+    });
   }
 });
+
+
 async function createPost(page, platform, task) {
   console.log(`📝 Creating post on ${platform}...`);
 
